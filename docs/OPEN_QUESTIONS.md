@@ -31,8 +31,9 @@ configs/paths.remote.yaml`，报告里的 `unconfigured_extensions`、`aggregate
 - 只有基于 SHA-256 的精确去重，没有近重复检测。同一模型的不同 LOD、格式或轻微变体目前
   会落入不同组，从而可能跨 split；
 - 高级 Artistic 特征只有定义，没有实现，配置开关全为 `false`；
-- 划分只产出 `train/val/test/all`，`matched_test`（面数匹配测试集）与 `audit_gold`（人工
-  盲审集）尚未生成；
+- 划分产出 `train/val/test/all`，另外 `build-matched-test` 与 `build-audit-gold` 会生成
+  `matched_test.csv`、`audit_gold.csv` 和它的对照表。但盲审还缺渲染图：`audit_gold` 只给出
+  样本表和分层，评审者要看的图片依赖尚未实现的渲染环节；
 - `runtime.resume` 复用已解析的行，前提是只读源在两次运行之间没有变化。源变更后必须
   设回 `false` 全量重算，否则会保留过期特征。
 

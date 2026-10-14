@@ -50,6 +50,34 @@ sources.<source_dataset>.root + raw_relpath
 的行，只处理新出现的资产，并在返回的计数里用 `resumed` 报告复用了多少行；已经不在当前
 manifest 里的旧行会被丢弃。这个开关假定只读源没有变化，源变更后必须全量重算。
 
+## Evaluation sets
+
+由 `build-matched-test` 与 `build-audit-gold` 生成，两者都是以 `asset_id` 为主键的子集表，
+不是新的数据划分，永远不参与训练。
+
+### `matched_test.csv`
+
+面数匹配测试集。默认从冻结的 `test` 划分里抽取（`matched_test.pool` 可改），在每个面数
+分箱内把正负样本按顶点数排序后一一配对，因此两个标签的面数分布相同。列包括
+`face_count_bin` 与 `match_pair_id`，同一对的两行共享 `match_pair_id`。
+
+只有一个标签的分箱会被整体丢弃，并在命令输出与 `dropped_bins` 里列出原因，不做配平。
+若一个分箱都不含两个标签，命令直接报错——那说明两个来源的面数分布不重叠，匹配集无法
+构造，这本身就是必须知道的结论。
+
+### `audit_gold.csv` 与 `audit_gold_key.csv`
+
+人工盲审样本，输出两个文件：
+
+- `audit_gold.csv`：评审者打开的表。只有 `anonymous_name`、`asset_id` 和空的评审列
+  （`human_label`、`human_confidence`、`human_notes`、`reviewer`、`reviewed_at`），
+  不含来源、路径、代理标签和面数；
+- `audit_gold_key.csv`：把匿名名映射回来源与代理标签的对照表，同时记录分层键。
+
+`human_label` 取值见 `docs/LABELING_GUIDE.md`。key 表不得交给评审者，否则盲审失效。
+抽样按 `label × 面数分箱` 分层，并保证每个分层至少抽到 1 个（预算允许时按
+`min_per_stratum` 提高下限），因为抽到 0 或 1 个的分层估不出错误率。
+
 ## Reports
 
 `probe` 与 `smoke` 各写一份 JSON 报告（路径由 `outputs.probe_report`、`outputs.smoke_report`

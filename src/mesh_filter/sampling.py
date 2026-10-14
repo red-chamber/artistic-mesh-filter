@@ -9,10 +9,12 @@ spaced and seeded only by sorted paths.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, Sequence, TypeVar
 
 from mesh_filter.config import ConfigError, ProjectConfig
 from mesh_filter.manifest import normalized_extensions
+
+Item = TypeVar("Item")
 
 DEFAULT_SAMPLE_SIZE = 20
 
@@ -40,8 +42,12 @@ def extension_of(path: Path) -> str:
     return path.suffix.lower() or "<none>"
 
 
-def deterministic_sample(items: Sequence[Path], size: int | None) -> list[Path]:
-    """Pick evenly spaced items so the sample covers the whole sorted range."""
+def deterministic_sample(items: Sequence[Item], size: int | None) -> list[Item]:
+    """Pick evenly spaced items so the sample covers the whole sorted range.
+
+    Works on any sequence, not just paths: the matched test set reuses it to
+    subsample rows inside a face-count bin.
+    """
     if size is None or size >= len(items):
         return list(items)
     if size <= 0:

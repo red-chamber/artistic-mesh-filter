@@ -24,6 +24,9 @@ configs/runtime.remote.yaml
 data/manifests/*.csv
 data/manifests/*.parquet
 data/splits/*/*.csv
+# Label tables are produced per run; the audit answer key must never be
+# committed because it would unblind a review.
+data/labels/*.csv
 runs/*
 !runs/.gitkeep
 # Probe and smoke reports are run artifacts, not repository content.

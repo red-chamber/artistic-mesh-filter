@@ -14,6 +14,8 @@ from typing import Any, Callable
 import pytest
 import yaml
 
+from mesh_filter.manifest import write_csv
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_ROOT = REPO_ROOT / "tests" / "fixtures"
 
@@ -35,6 +37,61 @@ def second_mesh() -> str:
 @pytest.fixture
 def invalid_mesh() -> str:
     return INVALID_MESH
+
+
+EVAL_FEATURE_FIELDS = [
+    "asset_id",
+    "source_dataset",
+    "label",
+    "label_origin",
+    "parse_status",
+    "face_count",
+    "vertex_count",
+    "component_count",
+]
+
+EVAL_SPLIT_FIELDS = ["asset_id", "source_dataset", "label", "label_origin", "split"]
+
+
+@pytest.fixture
+def write_eval_tables(tmp_path: Path) -> Callable[[list[tuple]], None]:
+    """Write the two tables the evaluation-set builders join.
+
+    Each spec is (asset_id, label, split, face_count, vertex_count). The files
+    land at the paths `configs/*.yaml` points at, so tests exercise the same
+    join the real run uses instead of a stand-in.
+    """
+
+    def _write(specs: list[tuple]) -> None:
+        feature_rows = []
+        split_rows = []
+        for asset_id, label, split, face_count, vertex_count in specs:
+            source_dataset = "toys4k" if int(label) == 1 else "objaverse"
+            feature_rows.append(
+                {
+                    "asset_id": asset_id,
+                    "source_dataset": source_dataset,
+                    "label": label,
+                    "label_origin": "dataset_proxy",
+                    "parse_status": "parsed",
+                    "face_count": face_count,
+                    "vertex_count": vertex_count,
+                    "component_count": 1,
+                }
+            )
+            split_rows.append(
+                {
+                    "asset_id": asset_id,
+                    "source_dataset": source_dataset,
+                    "label": label,
+                    "label_origin": "dataset_proxy",
+                    "split": split,
+                }
+            )
+        write_csv(tmp_path / "data" / "features.csv", feature_rows, EVAL_FEATURE_FIELDS)
+        write_csv(tmp_path / "data" / "splits" / "v1" / "all.csv", split_rows, EVAL_SPLIT_FIELDS)
+
+    return _write
 
 
 @pytest.fixture

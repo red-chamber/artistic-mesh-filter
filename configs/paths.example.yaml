@@ -31,6 +31,10 @@ outputs:
   # Keep the smoke-test report separate from the full-pass outputs.
   probe_report: "reports/probe_report.json"
   smoke_report: "reports/smoke_report.json"
+  matched_test: "data/splits/v1/matched_test.csv"
+  # The blind sheet and its answer key must stay in separate files.
+  audit_gold: "data/labels/audit_gold.csv"
+  audit_gold_key: "data/labels/audit_gold_key.csv"
 
 # Extensions the pipeline will ingest. The probe reports any file outside this
 # list, because those files are invisible to every other command.
@@ -70,3 +74,20 @@ split:
   train_ratio: 0.70
   val_ratio: 0.15
   test_ratio: 0.15
+
+# Face-count-matched test set. Drawn from the frozen pool, never used for
+# training. Bin edges are absolute face counts; assets above the last edge land
+# in the open-ended top bin and are reported if that bin has only one label.
+matched_test:
+  pool: ["test"]
+  max_per_bin_per_label: 200
+  min_pairs_per_bin: 1
+  face_count_edges: [0, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000]
+
+# Blind human-review sample. Keep the key away from the reviewer.
+audit_gold:
+  size: 200
+  seed: 7
+  min_per_stratum: 5
+  stratify_by: "label_and_face_count_bin"
+  face_count_edges: [0, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000]

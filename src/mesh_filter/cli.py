@@ -7,6 +7,8 @@ from typing import Sequence
 
 from mesh_filter.config import load_project_config
 from mesh_filter.deduplicate import mark_exact_duplicates
+from mesh_filter.evaluation.blind_audit import build_audit_gold
+from mesh_filter.evaluation.matched_test import build_matched_test
 from mesh_filter.manifest import build_manifest
 from mesh_filter.models.count_baseline import train_count_baseline
 from mesh_filter.probe import probe_sources
@@ -55,6 +57,21 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("configs/experiments/count_baseline.yaml"),
     )
+
+    matched = add_config(
+        "build-matched-test",
+        "Pair both labels inside the same face-count bins",
+    )
+    matched.add_argument(
+        "--pool",
+        nargs="+",
+        default=None,
+        help="Splits to draw from; defaults to matched_test.pool in the config.",
+    )
+    matched.add_argument("--max-per-bin-per-label", type=int, default=None)
+
+    audit = add_config("build-audit-gold", "Draw the blind human-review sample")
+    audit.add_argument("--size", type=int, default=None)
     return parser
 
 
@@ -142,6 +159,38 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
         return 0 if report["verdict"] == "pass" else 1
+    elif args.command == "build-matched-test":
+        output, report = build_matched_test(config, args.pool, args.max_per_bin_per_label)
+        print(
+            json.dumps(
+                {
+                    "output": str(output),
+                    "pool": report["pool"],
+                    "pool_size": report["pool_size"],
+                    "pairs": report["pairs"],
+                    "assets": report["assets"],
+                    "dropped_bins": report["dropped_bins"],
+                    "face_count_selected": report["population"]["selected"]["face_count"],
+                    "face_count_pool": report["population"]["pool"]["face_count"],
+                },
+                ensure_ascii=False,
+            )
+        )
+    elif args.command == "build-audit-gold":
+        output, report = build_audit_gold(config, args.size)
+        print(
+            json.dumps(
+                {
+                    "output": str(output),
+                    "key_output": report["key_output"],
+                    "requested": report["requested"],
+                    "sampled": report["sampled"],
+                    "population": report["population"],
+                    "strata": report["strata"],
+                },
+                ensure_ascii=False,
+            )
+        )
     elif args.command == "train-count-baseline":
         output, metrics = train_count_baseline(config, config.resolve(args.experiment))
         print(json.dumps({"output": str(output), "metrics": metrics}, ensure_ascii=False))

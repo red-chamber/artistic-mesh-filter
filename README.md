@@ -22,11 +22,13 @@
 7. 训练只使用面数/顶点数的逻辑回归基线；
 8. 保存运行配置、预测结果和评估指标。
 
-另外提供三项面向真实数据的前置能力：
+另外提供这些能力：
 
 - `probe`：只读扫描真实数据源，报告实际格式、白名单外格式、容器结构、尺度分布和
   解析失败原因，用来回答合成夹具回答不了的问题；
 - `smoke`：在全量运行前对少量真实模型跑一遍完整单文件流程，给出机器可读的通过/不通过裁决；
+- `build-matched-test`：从冻结划分里构造面数匹配的正负配对，让分数不再可能来自"这一类面数少"；
+- `build-audit-gold`：抽一份盲审样本，输出评审者表与对照表两个文件；
 - 环境快照：记录 Python、关键库版本、git commit 和加速器信息。
 
 暂未锁定的内容见 [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md)。
@@ -65,6 +67,8 @@ uv run python scripts/02_exact_deduplicate.py --config configs/dev.yaml
 uv run python scripts/03_split.py --config configs/dev.yaml
 uv run python scripts/05_probe_formats.py --config configs/dev.yaml
 uv run python scripts/06_smoke_test.py --config configs/dev.yaml
+uv run python scripts/07_build_matched_test.py --config configs/dev.yaml
+uv run python scripts/08_build_audit_gold.py --config configs/dev.yaml
 ```
 
 `04_train_count_baseline.py` 需要 `train` 额外依赖（scikit-learn、joblib）：
@@ -123,6 +127,8 @@ probe（只读，看真实格式）
 - `basic_features_v1.csv`：解析状态、合法性状态和基础特征；
 - `assets_deduplicated_v1.csv`：加入精确重复组的 manifest；
 - `train.csv`、`val.csv`、`test.csv`：冻结的数据划分；
+- `matched_test.csv`：面数匹配的正负配对测试集，只用于诊断；
+- `audit_gold.csv` 与 `audit_gold_key.csv`：盲审表与对照表，后者不得交给评审者；
 - `runs/<run-id>/`：实验配置、指标、预测和模型文件；
 - `reports/probe_report.json`、`reports/smoke_report.json`：探测与冒烟报告。
 

@@ -20,6 +20,9 @@ outputs:
   run_root: "work/dev/runs"
   probe_report: "work/dev/probe_report.json"
   smoke_report: "work/dev/smoke_report.json"
+  matched_test: "work/dev/splits/v1/matched_test.csv"
+  audit_gold: "work/dev/labels/audit_gold.csv"
+  audit_gold_key: "work/dev/labels/audit_gold_key.csv"
 
 formats:
   extensions: [".obj"]
@@ -45,3 +48,14 @@ split:
   train_ratio: 0.5
   val_ratio: 0.25
   test_ratio: 0.25
+
+# Four fixtures cannot fill a single-split pool, so the local pool is opened to
+# every split. On real data the pool stays at ["test"].
+matched_test:
+  pool: ["train", "val", "test"]
+  max_per_bin_per_label: 200
+
+audit_gold:
+  # The fixture population is smaller than this, so the sample is the whole pool.
+  size: 200
+  seed: 7

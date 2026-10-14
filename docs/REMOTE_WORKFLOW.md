@@ -120,9 +120,20 @@ python -m mesh_filter build-manifest  --config configs/paths.remote.yaml
 python -m mesh_filter validate        --config configs/paths.remote.yaml
 python -m mesh_filter deduplicate     --config configs/paths.remote.yaml
 python -m mesh_filter split           --config configs/paths.remote.yaml
+python -m mesh_filter build-matched-test --config configs/paths.remote.yaml
+python -m mesh_filter build-audit-gold   --config configs/paths.remote.yaml
 python -m mesh_filter train-count-baseline --config configs/paths.remote.yaml \
   --experiment configs/experiments/count_baseline.yaml
 ```
+
+`build-matched-test` 与 `build-audit-gold` 必须在 `split` 之后、训练之前跑，**并且要看它们
+打印出来的分箱报告**：
+
+- `build-matched-test` 的 `dropped_bins` 里如果是"面数分布不重叠"造成的整档丢弃，那么计数
+  基线的高分不能解释为拓扑能力，后面所有结论都要打折扣；如果它直接报错，说明两个来源在
+  面数上根本不重叠，这时要先决定怎么办，再谈训练；
+- `build-audit-gold` 的 `strata` 表要确认每个分层都抽到了人。拿 `audit_gold_key.csv` 只用于
+  事后对账，评审时不能打开。
 
 长跑建议：在配置里设 `runtime.resume: true`，中断后重跑 `validate` 会复用已解析的行，
 只处理新增或上次失败的对象。前提是只读源在这期间没有变化；源变了就设回 `false` 全量重算。
@@ -138,11 +149,15 @@ reports/environment.json
 data/manifests/assets_v1.csv
 data/manifests/basic_features_v1.csv
 data/manifests/assets_deduplicated_v1.csv
-data/splits/v1/
-runs/<run-id>/          （resolved_config、metrics.json、predictions.csv）
+data/splits/v1/          （含 matched_test.csv）
+data/labels/             （含 audit_gold.csv；audit_gold_key.csv 一并回传但不得交给评审者）
+runs/<run-id>/           （resolved_config、metrics.json、predictions.csv）
 logs/
 少量错误案例与画廊
 ```
+
+人工盲审还需要 `audit_gold.csv` 里每个 `asset_id` 的多视角渲染图。渲染在本流水线之外，
+所以在真正确认渲染后端之前，盲审这一步只能先准备好样本表，图片要另行生成。
 
 不回传：原始模型、canonical 产物、全量渲染、模型权重。本机通过特征表、指标和失败
 日志做分析，不需要拿到大文件。
