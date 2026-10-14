@@ -1,0 +1,14 @@
+name: "count-baseline-v1"
+seed: 42
+feature_columns:
+  - vertex_count
+  - face_count
+  - edge_count
+  - component_count
+  - boundary_edge_count
+model:
+  type: "logistic_regression"
+  class_weight: "balanced"
+  max_iter: 2000
+evaluation:
+  precision_at_k: 50

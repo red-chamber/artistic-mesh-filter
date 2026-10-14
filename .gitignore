@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Private machine configuration
+configs/paths.local.yaml
+configs/paths.remote.yaml
+configs/runtime.local.yaml
+configs/runtime.remote.yaml
+
+# Generated metadata and runs
+data/manifests/*.csv
+data/manifests/*.parquet
+data/splits/*/*.csv
+runs/*
+!runs/.gitkeep
+
+# Large or generated assets (must not be committed)
+# Anchored to the repository root: these are DATA_ROOT directories, which live
+# outside the repo. Anchoring keeps in-repo source dirs such as
+# configs/features/ and src/mesh_filter/features/ from being ignored.
+/raw/
+/canonical/
+/features/
+/renders/
+/quarantine/
+/work/
+*.glb
+*.gltf
+*.fbx
+*.stl
+*.ply
+*.off
+*.obj
+!tests/fixtures/**/*.obj
+
+# Models and logs
+*.joblib
+*.pt
+*.pth
+*.ckpt
+*.log

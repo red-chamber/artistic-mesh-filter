@@ -1,0 +1,15 @@
+version: "preprocess-v1"
+
+# Raw files are never overwritten.
+scene_policy: "keep_geometry_then_concatenate_for_metrics"
+center: true
+scale: "unit_longest_extent"
+preserve_original_topology: true
+write_triangulated_copy: false
+merge_duplicate_vertices: false
+repair_normals: false
+remove_degenerate_faces: false
+
+# These operations stay disabled until the real formats and training input are confirmed.
+export_format: null
+canonical_root: null

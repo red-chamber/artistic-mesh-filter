@@ -1,0 +1,12 @@
+version: "artistic-features-v1-draft"
+status: "requires_real_data_validation"
+
+# Definitions are documented now; implementations should be finalized after
+# inspecting real Toys4K and Objaverse topology on the remote device.
+features:
+  vertex_degree_histogram: true
+  one_ring_edge_length_cv: true
+  local_edge_direction_entropy: false
+  neighboring_direction_consistency: false
+  curvature_density_correlation: false
+  qem_redundancy: false

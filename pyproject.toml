@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "artistic-mesh-filter"
+version = "0.1.0"
+description = "Reproducible screening pipeline for Artistic and low-poly meshes"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+  "numpy>=1.24,<3",
+  "PyYAML>=6,<7",
+  "trimesh>=4,<5",
+]
+
+[project.optional-dependencies]
+train = [
+  "joblib>=1.3,<2",
+  "scikit-learn>=1.3,<2",
+]
+parquet = [
+  "pandas>=2,<3",
+  "pyarrow>=14,<21",
+]
+dev = [
+  "pytest>=7,<9",
+  "ruff>=0.6,<1",
+]
+
+[project.scripts]
+mesh-filter = "mesh_filter.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]

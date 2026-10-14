@@ -1,0 +1,34 @@
+# Local smoke-test configuration. It never points to real datasets.
+
+sources:
+  toys4k:
+    root: "tests/fixtures/positive"
+    label: 1
+    label_origin: "synthetic_fixture"
+    selection_rule: "local_test_only"
+  objaverse:
+    root: "tests/fixtures/negative"
+    label: 0
+    label_origin: "synthetic_fixture"
+    selection_rule: "local_test_only"
+
+outputs:
+  manifest: "work/dev/assets_v1.csv"
+  features: "work/dev/basic_features_v1.csv"
+  deduplicated_manifest: "work/dev/assets_deduplicated_v1.csv"
+  split_root: "work/dev/splits/v1"
+  run_root: "work/dev/runs"
+
+formats:
+  extensions: [".obj"]
+
+runtime:
+  hash_files: true
+  continue_on_error: true
+  limit_per_source: null
+
+split:
+  seed: 42
+  train_ratio: 0.5
+  val_ratio: 0.25
+  test_ratio: 0.25

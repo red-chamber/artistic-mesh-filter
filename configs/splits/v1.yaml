@@ -1,0 +1,14 @@
+version: "split-v1"
+seed: 42
+train_ratio: 0.70
+val_ratio: 0.15
+test_ratio: 0.15
+stratify_by: "label"
+group_by: "duplicate_group_id"
+
+# Exact duplicate groups are isolated now. Category- and face-count-matched
+# evaluation is added only after real metadata/features are available.
+matched_test:
+  enabled: false
+  face_count_bins: null
+  category_column: null
