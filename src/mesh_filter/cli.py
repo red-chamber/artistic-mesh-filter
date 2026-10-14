@@ -9,6 +9,8 @@ from mesh_filter.config import load_project_config
 from mesh_filter.deduplicate import mark_exact_duplicates
 from mesh_filter.manifest import build_manifest
 from mesh_filter.models.count_baseline import train_count_baseline
+from mesh_filter.probe import probe_sources
+from mesh_filter.smoke import run_smoke_test
 from mesh_filter.split import create_splits
 from mesh_filter.validate import validate_manifest
 
@@ -35,6 +37,17 @@ def _parser() -> argparse.ArgumentParser:
 
     split = add_config("split", "Create deterministic group-isolated splits")
     split.add_argument("--split-config", type=Path, default=None)
+
+    probe = add_config("probe", "Inspect real formats and asset structure (read-only)")
+    probe.add_argument("--sample-size", type=int, default=None)
+
+    smoke = add_config("smoke", "Run the pre-full-pass smoke test on real data")
+    smoke.add_argument("--sample-size", type=int, default=None)
+    smoke.add_argument(
+        "--feature-config",
+        type=Path,
+        default=Path("configs/features/basic_v1.yaml"),
+    )
 
     train = add_config("train-count-baseline", "Train the count-only baseline")
     train.add_argument(
@@ -67,6 +80,65 @@ def main(argv: Sequence[str] | None = None) -> int:
         split_config = config.resolve(args.split_config) if args.split_config else None
         output, counts = create_splits(config, split_config)
         print(json.dumps({"output": str(output), **counts}, ensure_ascii=False))
+    elif args.command == "probe":
+        output, report = probe_sources(config, args.sample_size)
+        print(
+            json.dumps(
+                {
+                    "output": str(output),
+                    "sources": {
+                        name: {
+                            "file_count": entry["file_count"],
+                            "ingestable_count": entry["ingestable_count"],
+                            "sampled_count": entry["sampled_count"],
+                            "parse_rate": entry["aggregate"].get("parse_rate"),
+                            "unconfigured_extensions": entry["unconfigured_extensions"],
+                            "notes": entry["notes"],
+                        }
+                        for name, entry in report["sources"].items()
+                    },
+                },
+                ensure_ascii=False,
+            )
+        )
+    elif args.command == "smoke":
+        output, report = run_smoke_test(
+            config,
+            args.sample_size,
+            config.resolve(args.feature_config),
+        )
+        print(
+            json.dumps(
+                {
+                    "output": str(output),
+                    "verdict": report["verdict"],
+                    "sources": {
+                        name: {
+                            "ingestable_count": summary["ingestable_count"],
+                            "sampled": summary["sampled"],
+                            "parsed": summary["parsed"],
+                            "failed": summary["failed"],
+                            "max_seconds": summary["max_seconds"],
+                            "estimated_full_pass_seconds": summary[
+                                "estimated_full_pass_seconds"
+                            ],
+                        }
+                        for name, summary in report["sources"].items()
+                    },
+                    "failed_checks": [
+                        check["detail"]
+                        for check in report["checks"]
+                        if check["status"] == "fail"
+                    ],
+                    "quarantine_buckets": {
+                        bucket: entry["count"]
+                        for bucket, entry in report["quarantine_plan"].items()
+                    },
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0 if report["verdict"] == "pass" else 1
     elif args.command == "train-count-baseline":
         output, metrics = train_count_baseline(config, config.resolve(args.experiment))
         print(json.dumps({"output": str(output), "metrics": metrics}, ensure_ascii=False))

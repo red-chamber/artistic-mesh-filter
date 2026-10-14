@@ -18,6 +18,8 @@ outputs:
   deduplicated_manifest: "work/dev/assets_deduplicated_v1.csv"
   split_root: "work/dev/splits/v1"
   run_root: "work/dev/runs"
+  probe_report: "work/dev/probe_report.json"
+  smoke_report: "work/dev/smoke_report.json"
 
 formats:
   extensions: [".obj"]
@@ -26,6 +28,17 @@ runtime:
   hash_files: true
   continue_on_error: true
   limit_per_source: null
+  # Local fixtures are tiny, so probe and smoke may look at all of them.
+  sample_per_source: null
+  # Requires the sources to be unchanged since the previous run.
+  resume: false
+
+# Gate thresholds for `smoke`. Local fixtures are synthetic, so the parse-rate
+# floor is trivially met here; the numbers matter on the data device.
+smoke:
+  min_parse_rate: 0.9
+  max_seconds_per_asset: 120
+  max_peak_mb: 2048
 
 split:
   seed: 42

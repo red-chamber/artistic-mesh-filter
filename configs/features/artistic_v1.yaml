@@ -1,11 +1,14 @@
 version: "artistic-features-v1-draft"
 status: "requires_real_data_validation"
 
-# Definitions are documented now; implementations should be finalized after
-# inspecting real Toys4K and Objaverse topology on the remote device.
+# Definitions are documented in docs/FEATURE_DEFINITIONS.md and are the contract
+# for the remote implementation. Every flag is false because none of these is
+# implemented yet: the topological assumptions (one geometry per asset, no
+# non-unit transforms) must be confirmed by `probe` on the real data first.
+# Set a flag to true only in the same change that implements it.
 features:
-  vertex_degree_histogram: true
-  one_ring_edge_length_cv: true
+  vertex_degree_histogram: false
+  one_ring_edge_length_cv: false
   local_edge_direction_entropy: false
   neighboring_direction_consistency: false
   curvature_density_correlation: false

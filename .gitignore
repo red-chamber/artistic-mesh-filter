@@ -26,6 +26,8 @@ data/manifests/*.parquet
 data/splits/*/*.csv
 runs/*
 !runs/.gitkeep
+# Probe and smoke reports are run artifacts, not repository content.
+/reports/
 
 # Large or generated assets (must not be committed)
 # Anchored to the repository root: these are DATA_ROOT directories, which live

@@ -39,6 +39,37 @@ def _assign_groups(
     return assignments
 
 
+def _ensure_split_coverage(
+    assignments: dict[str, str],
+    grouped_rows: dict[str, list[dict[str, str]]],
+    ratios: dict[str, float],
+) -> dict[str, str]:
+    """Give every split with a positive ratio at least one group.
+
+    With a handful of smoke-test models the greedy fill can starve a split
+    (`test` ends up empty), which makes the smoke test unable to prove the split
+    stage works. Moving the smallest group out of the largest split changes
+    nothing once the sources are large enough to fill every split naturally.
+    """
+    counts: dict[str, int] = {name: 0 for name in ratios}
+    for split_name in assignments.values():
+        counts[split_name] = counts.get(split_name, 0) + 1
+
+    for split_name in sorted(ratios):
+        if ratios[split_name] <= 0 or counts.get(split_name, 0):
+            continue
+        donors = [name for name in ratios if counts.get(name, 0) > 1]
+        if not donors:
+            continue
+        donor = max(donors, key=lambda name: (counts[name], name))
+        candidates = [group for group, name in assignments.items() if name == donor]
+        moved = min(candidates, key=lambda group: (len(grouped_rows[group]), group))
+        assignments[moved] = split_name
+        counts[donor] -= 1
+        counts[split_name] = 1
+    return assignments
+
+
 def create_splits(
     config: ProjectConfig,
     split_config_path: str | Path | None = None,
@@ -65,6 +96,7 @@ def create_splits(
         group_id = row.get("duplicate_group_id") or row["asset_id"]
         grouped[group_id].append(row)
     assignments = _assign_groups(grouped, ratios, seed)
+    assignments = _ensure_split_coverage(assignments, grouped, ratios)
 
     output_root = config.output_path("split_root")
     output_root.mkdir(parents=True, exist_ok=True)

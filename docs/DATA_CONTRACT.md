@@ -45,3 +45,13 @@ sources.<source_dataset>.root + raw_relpath
 ## Generated tables
 
 基础特征表以 `asset_id` 为主键。未能解析的对象仍保留一行，填写错误字段，数值特征留空，以便统计失败率而不是静默丢样本。
+
+`validate` 默认每次全量重算。设 `runtime.resume: true` 时，它会复用输出表里 `parse_status=parsed`
+的行，只处理新出现的资产，并在返回的计数里用 `resumed` 报告复用了多少行；已经不在当前
+manifest 里的旧行会被丢弃。这个开关假定只读源没有变化，源变更后必须全量重算。
+
+## Reports
+
+`probe` 与 `smoke` 各写一份 JSON 报告（路径由 `outputs.probe_report`、`outputs.smoke_report`
+决定）。它们描述一次运行，不是数据契约的一部分：字段可以随实现增补，但 `smoke` 报告里的
+`verdict`、`checks[].name` 和 `sources.<name>` 下的汇总字段是远端回传与门控依赖的稳定接口。

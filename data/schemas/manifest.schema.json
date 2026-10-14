@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/artistic-mesh-filter/manifest.schema.json",
+  "title": "Asset manifest row",
+  "description": "One row of the asset manifest written by `build-manifest` and carried through `deduplicate` and `split`. The physical file is CSV, so every value is stored as text; the types below describe the logical value after parsing. Keeping this schema next to the code lets generated tables and downstream scripts be validated instead of guessed.",
+  "$comment": "Property names must stay in sync with MANIFEST_FIELDS in src/mesh_filter/manifest.py; tests/test_manifest_schema.py fails if they drift.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "asset_id",
+    "source_dataset",
+    "source_uid",
+    "raw_relpath",
+    "sha256",
+    "file_format",
+    "file_size_bytes",
+    "label",
+    "label_origin",
+    "selection_rule",
+    "parse_status",
+    "validity_status",
+    "error_code",
+    "duplicate_group_id",
+    "canonical_version",
+    "split"
+  ],
+  "properties": {
+    "asset_id": {
+      "type": "string",
+      "description": "Stable, neutral project ID derived from source name and relative path. Never encodes the label.",
+      "pattern": "^[0-9a-f]{20}$"
+    },
+    "source_dataset": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Key under sources in the path configuration. Tracked for bias analysis, never used as a training feature."
+    },
+    "source_uid": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier inside the source dataset; currently the relative path."
+    },
+    "raw_relpath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "POSIX path relative to sources.<source_dataset>.root."
+    },
+    "sha256": {
+      "type": "string",
+      "description": "Lowercase SHA-256 of the original file. Empty when runtime.hash_files is false.",
+      "pattern": "^([0-9a-f]{64})?$"
+    },
+    "file_format": {
+      "type": "string",
+      "description": "Lowercase extension without the dot.",
+      "pattern": "^[a-z0-9]+$"
+    },
+    "file_size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "label": {
+      "type": "integer",
+      "enum": [0, 1],
+      "description": "1 for the proxy positive source, 0 for the proxy negative source."
+    },
+    "label_origin": {
+      "type": "string",
+      "enum": ["dataset_proxy", "human_review", "synthetic_fixture"],
+      "description": "Where the label came from. dataset_proxy means source and label are perfectly confounded."
+    },
+    "selection_rule": {
+      "type": "string",
+      "description": "How the asset entered the dataset. Required to be meaningful for negatives, since their selection is the weakest link in a proxy label."
+    },
+    "parse_status": {
+      "type": "string",
+      "enum": ["not_run", "parsed", "failed"]
+    },
+    "validity_status": {
+      "type": "string",
+      "enum": ["not_run", "valid", "valid_with_warnings", "invalid"],
+      "description": "invalid means the current pipeline cannot use the file; it does not imply label = 0."
+    },
+    "error_code": {
+      "type": "string",
+      "description": "Machine-countable error type, for example the exception class name. Empty when parse_status is parsed."
+    },
+    "duplicate_group_id": {
+      "type": "string",
+      "description": "Group ID shared by all rows that must stay in the same split. Falls back to asset_id when the asset is unique."
+    },
+    "canonical_version": {
+      "type": "string",
+      "description": "Version of the canonicalization output. Empty while canonicalization is not enabled."
+    },
+    "split": {
+      "type": "string",
+      "enum": ["", "train", "val", "test"]
+    }
+  }
+}

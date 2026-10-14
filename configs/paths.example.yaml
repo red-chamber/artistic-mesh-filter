@@ -1,5 +1,5 @@
 # Copy this file to paths.remote.yaml on the data device and fill real paths.
-# Do not commit the private path file.
+# Do not commit the private path file: configs/paths.remote.yaml is ignored.
 
 sources:
   toys4k:
@@ -19,7 +19,12 @@ outputs:
   deduplicated_manifest: "data/manifests/assets_deduplicated_v1.csv"
   split_root: "data/splits/v1"
   run_root: "runs"
+  # Keep the smoke-test report separate from the full-pass outputs.
+  probe_report: "reports/probe_report.json"
+  smoke_report: "reports/smoke_report.json"
 
+# Extensions the pipeline will ingest. The probe reports any file outside this
+# list, because those files are invisible to every other command.
 formats:
   extensions:
     - ".obj"
@@ -33,4 +38,26 @@ formats:
 runtime:
   hash_files: true
   continue_on_error: true
+  # null means "every file". Set a small number for the smoke pass, then null
+  # for the full pass, using a different output path for each.
   limit_per_source: null
+  # How many files per source `probe` and `smoke` inspect.
+  sample_per_source: 20
+  # Reuse already-parsed rows from the features file instead of recomputing
+  # them. Only safe while the read-only sources are unchanged.
+  resume: false
+
+# Gate thresholds for `smoke`. Pick these from the probe and the first smoke
+# run, then keep them fixed so later runs stay comparable.
+smoke:
+  min_parse_rate: 0.9
+  max_seconds_per_asset: 120
+  max_peak_mb: 2048
+
+# Write the production ratios explicitly: the frozen split files are only
+# reproducible if these values travel with them.
+split:
+  seed: 42
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15

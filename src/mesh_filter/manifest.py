@@ -7,7 +7,6 @@ from typing import Any, Iterable
 
 from mesh_filter.config import ConfigError, ProjectConfig
 
-
 MANIFEST_FIELDS = [
     "asset_id",
     "source_dataset",
@@ -64,7 +63,7 @@ def write_csv(
     return output_path
 
 
-def _normalized_extensions(config: ProjectConfig) -> set[str]:
+def normalized_extensions(config: ProjectConfig) -> set[str]:
     extensions = config.values.get("formats", {}).get("extensions", [])
     normalized = {str(ext).lower() for ext in extensions}
     if not normalized:
@@ -77,7 +76,7 @@ def build_manifest(config: ProjectConfig) -> tuple[Path, int]:
     if not sources:
         raise ConfigError("At least one source must be configured")
 
-    extensions = _normalized_extensions(config)
+    extensions = normalized_extensions(config)
     runtime = config.values.get("runtime", {})
     hash_files = bool(runtime.get("hash_files", True))
     limit = runtime.get("limit_per_source")

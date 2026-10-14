@@ -3,11 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from mesh_filter.config import ProjectConfig, load_yaml
-from mesh_filter.features.basic import compute_basic_features
+from mesh_filter.config import ProjectConfig
+from mesh_filter.inspection import (
+    evaluate_asset,
+    has_warning,
+    load_feature_options,
+    safe_message,
+)
 from mesh_filter.manifest import read_csv, write_csv
-from mesh_filter.mesh_io import concatenate_for_metrics, load_mesh_parts
-
 
 STATUS_FIELDS = [
     "asset_id",
@@ -35,8 +38,26 @@ STATUS_FIELDS = [
 ]
 
 
-def _safe_message(error: Exception, maximum: int = 500) -> str:
-    return " ".join(str(error).split())[:maximum]
+def _reusable_rows(
+    output: Path,
+    resume: bool,
+    current_asset_ids: set[str],
+) -> dict[str, dict[str, str]]:
+    """Rows from a previous run that can be kept instead of recomputed.
+
+    Resuming assumes the read-only sources have not changed. A stale row is
+    worse than a slow rerun, so this is opt-in through `runtime.resume`.
+    """
+    if not resume or not output.exists():
+        return {}
+    reusable: dict[str, dict[str, str]] = {}
+    for row in read_csv(output):
+        asset_id = row.get("asset_id", "")
+        if asset_id not in current_asset_ids or row.get("parse_status") != "parsed":
+            continue
+        if all(field in row for field in STATUS_FIELDS):
+            reusable[asset_id] = row
+    return reusable
 
 
 def validate_manifest(
@@ -45,21 +66,19 @@ def validate_manifest(
 ) -> tuple[Path, dict[str, int]]:
     manifest_path = config.output_path("manifest")
     rows = read_csv(manifest_path)
-    feature_options: dict[str, Any] = {}
-    if feature_config_path is not None:
-        raw = load_yaml(feature_config_path)
-        for key in (
-            "zero_area_epsilon",
-            "equilateral_threshold",
-            "sliver_threshold",
-            "small_angle_threshold_deg",
-        ):
-            if key in raw:
-                feature_options[key] = raw[key]
+    options = load_feature_options(feature_config_path)
+    output = config.output_path("features")
 
-    continue_on_error = bool(config.values.get("runtime", {}).get("continue_on_error", True))
+    runtime = config.values.get("runtime", {})
+    continue_on_error = bool(runtime.get("continue_on_error", True))
+    reusable = _reusable_rows(
+        output,
+        bool(runtime.get("resume", False)),
+        {row["asset_id"] for row in rows},
+    )
+
     output_rows: list[dict[str, Any]] = []
-    counts = {"total": len(rows), "parsed": 0, "failed": 0, "warnings": 0}
+    counts = {"total": len(rows), "parsed": 0, "failed": 0, "warnings": 0, "resumed": 0}
 
     for record in rows:
         base = {
@@ -68,20 +87,20 @@ def validate_manifest(
             "label": record["label"],
             "label_origin": record["label_origin"],
         }
+
+        previous = reusable.get(record["asset_id"])
+        if previous is not None:
+            output_rows.append(previous)
+            counts["parsed"] += 1
+            counts["resumed"] += 1
+            counts["warnings"] += int(previous.get("validity_status") == "valid_with_warnings")
+            continue
+
         mesh_path = config.source_root(record["source_dataset"]) / record["raw_relpath"]
         try:
-            parts = load_mesh_parts(mesh_path)
-            mesh = concatenate_for_metrics(parts)
-            features = compute_basic_features(mesh.vertices, mesh.faces, **feature_options)
-            has_warning = any(
-                features[name] > 0
-                for name in (
-                    "zero_area_face_count",
-                    "duplicate_face_count",
-                    "nonmanifold_edge_count",
-                )
-            )
-            validity = "valid_with_warnings" if has_warning else "valid"
+            features = evaluate_asset(mesh_path, options)
+            warned = has_warning(features)
+            validity = "valid_with_warnings" if warned else "valid"
             output_rows.append(
                 {
                     **base,
@@ -89,12 +108,11 @@ def validate_manifest(
                     "validity_status": validity,
                     "error_code": "",
                     "error_message": "",
-                    "part_count": len(parts),
                     **features,
                 }
             )
             counts["parsed"] += 1
-            counts["warnings"] += int(has_warning)
+            counts["warnings"] += int(warned)
         except Exception as error:  # per-asset containment is intentional
             output_rows.append(
                 {
@@ -102,7 +120,7 @@ def validate_manifest(
                     "parse_status": "failed",
                     "validity_status": "invalid",
                     "error_code": type(error).__name__,
-                    "error_message": _safe_message(error),
+                    "error_message": safe_message(error),
                     "part_count": "",
                 }
             )
@@ -110,6 +128,5 @@ def validate_manifest(
             if not continue_on_error:
                 raise
 
-    output = config.output_path("features")
     write_csv(output, output_rows, STATUS_FIELDS)
     return output, counts
