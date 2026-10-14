@@ -17,7 +17,8 @@
 2. 使用中性 `asset_id` 管理对象；
 3. 解析 Mesh 并检查基础合法性；
 4. 计算基础几何与三角形形状特征；
-5. 基于 SHA-256 标记精确重复文件；
+5. 把重复模型归入同一组：SHA-256 抓字节相同的文件，几何指纹抓旋转/缩放/镜像/顶点重排
+   后的同一模型，保证它不会同时出现在训练集和测试集；
 6. 生成可复现、重复组隔离的数据划分；
 7. 训练只使用面数/顶点数的逻辑回归基线；
 8. 保存运行配置、预测结果和评估指标。
@@ -63,7 +64,7 @@ ruff check .
 ```bash
 uv run python scripts/00_build_manifest.py --config configs/dev.yaml
 uv run python scripts/01_validate.py --config configs/dev.yaml
-uv run python scripts/02_exact_deduplicate.py --config configs/dev.yaml
+uv run python scripts/02_deduplicate.py --config configs/dev.yaml
 uv run python scripts/03_split.py --config configs/dev.yaml
 uv run python scripts/05_probe_formats.py --config configs/dev.yaml
 uv run python scripts/06_smoke_test.py --config configs/dev.yaml

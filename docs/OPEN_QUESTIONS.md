@@ -28,8 +28,9 @@ configs/paths.remote.yaml`，报告里的 `unconfigured_extensions`、`aggregate
   验证，因此不写占位实现，等远端确定渲染后端后再说；
 - `canonicalize.py` 存在但没有接进流水线，manifest 的 `canonical_version` 恒为空字符串。
   在确认真实格式与轴向之前不应启用规范化；
-- 只有基于 SHA-256 的精确去重，没有近重复检测。同一模型的不同 LOD、格式或轻微变体目前
-  会落入不同组，从而可能跨 split；
+- 近重复检测只覆盖"顶点数、面数、连通分量完全相同"的重导出副本（旋转、镜像、统一缩放、
+  平移、顶点重排、换格式都算）。同一形状被重新细分、简化或合并顶点后会改变计数，落进
+  不同桶，检测不到；
 - 高级 Artistic 特征只有定义，没有实现，配置开关全为 `false`；
 - 划分产出 `train/val/test/all`，另外 `build-matched-test` 与 `build-audit-gold` 会生成
   `matched_test.csv`、`audit_gold.csv` 和它的对照表。但盲审还缺渲染图：`audit_gold` 只给出

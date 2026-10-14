@@ -16,6 +16,7 @@ outputs:
   manifest: "work/dev/assets_v1.csv"
   features: "work/dev/basic_features_v1.csv"
   deduplicated_manifest: "work/dev/assets_deduplicated_v1.csv"
+  fingerprints: "work/dev/fingerprints_v1.csv"
   split_root: "work/dev/splits/v1"
   run_root: "work/dev/runs"
   probe_report: "work/dev/probe_report.json"
@@ -35,6 +36,10 @@ runtime:
   sample_per_source: null
   # Requires the sources to be unchanged since the previous run.
   resume: false
+
+deduplicate:
+  near_duplicate: true
+  tolerance: 0.001
 
 # Gate thresholds for `smoke`. Local fixtures are synthetic, so the parse-rate
 # floor is trivially met here; the numbers matter on the data device.

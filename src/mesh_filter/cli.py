@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Sequence
 
 from mesh_filter.config import load_project_config
-from mesh_filter.deduplicate import mark_exact_duplicates
+from mesh_filter.deduplicate import mark_duplicates
 from mesh_filter.evaluation.blind_audit import build_audit_gold
 from mesh_filter.evaluation.matched_test import build_matched_test
 from mesh_filter.manifest import build_manifest
@@ -35,7 +35,10 @@ def _parser() -> argparse.ArgumentParser:
         default=Path("configs/features/basic_v1.yaml"),
     )
 
-    add_config("deduplicate", "Mark exact duplicates using SHA-256")
+    add_config(
+        "deduplicate",
+        "Group exact and near duplicates (needs `validate` to have run)",
+    )
 
     split = add_config("split", "Create deterministic group-isolated splits")
     split.add_argument("--split-config", type=Path, default=None)
@@ -86,13 +89,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         output, counts = validate_manifest(config, config.resolve(args.feature_config))
         print(json.dumps({"output": str(output), **counts}, ensure_ascii=False))
     elif args.command == "deduplicate":
-        output, duplicate_assets = mark_exact_duplicates(config)
-        print(
-            json.dumps(
-                {"output": str(output), "assets_in_duplicate_groups": duplicate_assets},
-                ensure_ascii=False,
-            )
-        )
+        output, report = mark_duplicates(config)
+        print(json.dumps(report, ensure_ascii=False))
     elif args.command == "split":
         split_config = config.resolve(args.split_config) if args.split_config else None
         output, counts = create_splits(config, split_config)

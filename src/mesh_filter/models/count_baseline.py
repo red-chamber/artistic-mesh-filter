@@ -83,10 +83,14 @@ def train_count_baseline(
     all_metrics: dict[str, Any] = {}
     prediction_rows: list[dict[str, Any]] = []
     k = int(experiment.get("evaluation", {}).get("precision_at_k", 50))
-    for split_name in ("val", "test"):
-        ids, matrix, labels = _read_feature_matrix(
-            feature_path, split_root / f"{split_name}.csv", columns
-        )
+    # `matched_test` is a diagnostic subset of the pool, not a training split.
+    # Reporting it next to the ordinary test score is the whole point of
+    # building it: a score that survives matching is not a polygon-count effect.
+    for split_name in ("val", "test", "matched_test"):
+        split_path = split_root / f"{split_name}.csv"
+        if not split_path.exists():
+            continue
+        ids, matrix, labels = _read_feature_matrix(feature_path, split_path, columns)
         if len(matrix) == 0:
             all_metrics[split_name] = {"sample_count": 0}
             continue

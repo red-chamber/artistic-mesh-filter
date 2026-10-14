@@ -138,6 +138,19 @@ python -m mesh_filter train-count-baseline --config configs/paths.remote.yaml \
 长跑建议：在配置里设 `runtime.resume: true`，中断后重跑 `validate` 会复用已解析的行，
 只处理新增或上次失败的对象。前提是只读源在这期间没有变化；源变了就设回 `false` 全量重算。
 
+`deduplicate` 要在 `validate` 之后跑，因为它的近重复阶段依赖特征表：它先用
+
+```text
+(vertex_count, face_count, component_count)
+```
+
+挑出可能重复的对象，只对这些对象重新解析并算指纹。这一步选出的候选是精确的而不是启发式的
+——计数不同的两个资产按定义就不可能互为近重复，所以跳过它们不会漏掉任何东西。看过
+`assets_in_duplicate_groups`、`groups_merged_by_near_duplicate` 和 `oversized_bucket_count`
+之后再进 `split`；`oversized_bucket_count` 非零说明桶键对这份数据太粗，需要看
+`oversized_buckets` 里的具体键再决定。把 `deduplicate.near_duplicate` 设为 `false`
+可以跳过整个解析阶段，但冻结划分给训练用之前不要关。
+
 ## 6. 回传清单
 
 回传：

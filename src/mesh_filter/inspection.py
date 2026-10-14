@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from mesh_filter.config import load_yaml
 from mesh_filter.features.basic import compute_basic_features
 from mesh_filter.mesh_io import concatenate_for_metrics, load_mesh_parts
@@ -36,12 +38,25 @@ def load_feature_options(path: str | Path | None) -> dict[str, Any]:
     return {key: raw[key] for key in FEATURE_OPTION_KEYS if key in raw}
 
 
-def evaluate_asset(mesh_path: str | Path, options: dict[str, Any]) -> dict[str, Any]:
-    """Load one asset and compute basic features. Raises on unusable input."""
+def load_asset_geometry(
+    mesh_path: str | Path,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Load one asset as a single concatenated triangle mesh.
+
+    Returns the vertex array, the face array and how many parts were joined, so
+    callers that need the geometry itself (fingerprints) do not have to parse a
+    second time. Raises on unusable input.
+    """
     parts = load_mesh_parts(mesh_path)
     mesh = concatenate_for_metrics(parts)
-    features = compute_basic_features(mesh.vertices, mesh.faces, **options)
-    return {"part_count": len(parts), **features}
+    return np.asarray(mesh.vertices), np.asarray(mesh.faces), len(parts)
+
+
+def evaluate_asset(mesh_path: str | Path, options: dict[str, Any]) -> dict[str, Any]:
+    """Load one asset and compute basic features. Raises on unusable input."""
+    vertices, faces, part_count = load_asset_geometry(mesh_path)
+    features = compute_basic_features(vertices, faces, **options)
+    return {"part_count": part_count, **features}
 
 
 def has_warning(features: dict[str, Any]) -> bool:

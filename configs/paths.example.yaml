@@ -26,6 +26,7 @@ outputs:
   manifest: "data/manifests/assets_v1.csv"
   features: "data/manifests/basic_features_v1.csv"
   deduplicated_manifest: "data/manifests/assets_deduplicated_v1.csv"
+  fingerprints: "data/manifests/fingerprints_v1.csv"
   split_root: "data/splits/v1"
   run_root: "runs"
   # Keep the smoke-test report separate from the full-pass outputs.
@@ -59,6 +60,15 @@ runtime:
   # Reuse already-parsed rows from the features file instead of recomputing
   # them. Only safe while the read-only sources are unchanged.
   resume: false
+
+# Duplicate grouping. Exact grouping uses SHA-256 and costs nothing; near
+# grouping parses the candidate assets again, so it is the one stage worth
+# turning off while iterating. Keep it on for the split that feeds training:
+# a duplicate split across two splits leaks a model into the evaluation.
+deduplicate:
+  near_duplicate: true
+  tolerance: 0.001
+  max_bucket_size: 200
 
 # Gate thresholds for `smoke`. Pick these from the probe and the first smoke
 # run, then keep them fixed so later runs stay comparable.
