@@ -11,7 +11,16 @@ sources:
     root: "/path/to/selected_objaverse"
     label: 0
     label_origin: "dataset_proxy"
-    selection_rule: "user_selected_negative_samples"
+    # The negative set was screened by hand before it reached this project, so
+    # the screening rule is part of the label definition, not a detail.
+    selection_rule: "user_screened_triangle_meshes_under_20k_faces_and_vertices"
+    # Declared bounds of that screening. `smoke` checks the sampled assets
+    # against them, so a wrong or unscreened directory fails the gate instead of
+    # silently redefining what "negative" means. Counts are measured after
+    # triangulation, because that is what the pipeline sees.
+    selection_limits:
+      max_face_count: 20000
+      max_vertex_count: 20000
 
 outputs:
   manifest: "data/manifests/assets_v1.csv"

@@ -119,6 +119,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                             "parsed": summary["parsed"],
                             "failed": summary["failed"],
                             "max_seconds": summary["max_seconds"],
+                            "selection_limit_violations": summary[
+                                "selection_limit_violation_count"
+                            ],
                             "estimated_full_pass_seconds": summary[
                                 "estimated_full_pass_seconds"
                             ],

@@ -87,7 +87,13 @@ python -m mesh_filter smoke --config configs/paths.remote.yaml --sample-size 20
 | `<source>.parse_rate` | 该来源抽样解析率不低于 `smoke.min_parse_rate` |
 | `<source>.seconds_per_asset` | 最慢单个模型不超过 `smoke.max_seconds_per_asset` |
 | `<source>.peak_memory` | 单模型 Python 堆峰值不超过 `smoke.max_peak_mb` |
+| `<source>.selection_limits` | 抽样资产都落在该来源声明的筛选界内（仅当配置里写了 `selection_limits` 时出现） |
 | `overall.parse_rate` | 两个来源合计解析率达标 |
+
+`selection_limits` 检查的是负样本的挑选规则：3000 个 Objaverse 模型是提前按"面数、顶点数
+小于 20000 且均为三角网格"筛过的（见 `docs/LABELING_GUIDE.md`）。界内的失败说明挂上来的
+目录和标签定义不符，此时分数没有意义。注意面数是三角化之后测得的，而"源文件原本是否
+为三角网格"无法在流水线内复核。
 
 `peak_memory` 只统计 Python 堆（tracemalloc），不含 C 层与显存，因此是下界，不能当作
 真实内存预算。真实峰值请在远端用系统工具另测。

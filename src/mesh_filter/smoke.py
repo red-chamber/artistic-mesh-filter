@@ -35,6 +35,8 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
 
 MAX_QUARANTINE_PATHS_REPORTED = 20
 
+MAX_SELECTION_VIOLATIONS_REPORTED = 10
+
 
 def _thresholds(config: ProjectConfig) -> dict[str, float]:
     configured = config.values.get("smoke", {})
@@ -96,14 +98,58 @@ EMPTY_SUMMARY: dict[str, Any] = {
     "estimated_full_pass_seconds": None,
     "error_codes": {},
     "quarantine_buckets": {},
+    "selection_limits": None,
+    "selection_limit_violation_count": 0,
+    "selection_limit_violations": [],
 }
 
 
-def _summarize(rows: list[dict[str, Any]], ingestable_count: int) -> dict[str, Any]:
+def _selection_violations(
+    rows: list[dict[str, Any]],
+    limits: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Sampled assets that fall outside the declared screening bounds.
+
+    The negative set was filtered by hand before it reached this project. If the
+    delivered directory does not match that screening rule, the proxy label no
+    longer means what the data card says it means, so this must be loud.
+    Counts are measured after triangulation, which is what the pipeline sees.
+    """
+    if not limits:
+        return []
+    max_faces = limits.get("max_face_count")
+    max_vertices = limits.get("max_vertex_count")
+    violations: list[dict[str, Any]] = []
+    for row in rows:
+        if row["parse_status"] != "parsed":
+            continue
+        faces = row.get("face_count")
+        vertices = row.get("vertex_count")
+        over_faces = max_faces is not None and faces is not None and faces > max_faces
+        over_vertices = (
+            max_vertices is not None and vertices is not None and vertices > max_vertices
+        )
+        if over_faces or over_vertices:
+            violations.append(
+                {
+                    "relpath": row["relpath"],
+                    "face_count": faces,
+                    "vertex_count": vertices,
+                }
+            )
+    return violations
+
+
+def _summarize(
+    rows: list[dict[str, Any]],
+    ingestable_count: int,
+    limits: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     parsed = [row for row in rows if row["parse_status"] == "parsed"]
     failed = [row for row in rows if row["parse_status"] == "failed"]
     seconds = [row["seconds"] for row in rows]
     mean_seconds = statistics.fmean(seconds) if seconds else None
+    violations = _selection_violations(rows, limits)
     return {
         "sampled": len(rows),
         "parsed": len(parsed),
@@ -121,6 +167,9 @@ def _summarize(rows: list[dict[str, Any]], ingestable_count: int) -> dict[str, A
         ),
         "error_codes": _counts(row["error_code"] for row in failed),
         "quarantine_buckets": _counts(row["quarantine_bucket"] for row in failed),
+        "selection_limits": limits,
+        "selection_limit_violation_count": len(violations),
+        "selection_limit_violations": violations[:MAX_SELECTION_VIOLATIONS_REPORTED],
     }
 
 
@@ -207,6 +256,17 @@ def _verdict_checks(
                     "(python heap only; excludes C-level and GPU memory)",
                 )
             )
+            if summary.get("selection_limits"):
+                checks.append(
+                    _check(
+                        f"{source_name}.selection_limits",
+                        summary["selection_limit_violation_count"] == 0,
+                        f"{summary['selection_limit_violation_count']}/{summary['parsed']} "
+                        f"parsed assets exceed declared limits "
+                        f"{summary['selection_limits']} "
+                        "(counts measured after triangulation)",
+                    )
+                )
 
     checks.append(
         _check(
@@ -252,7 +312,8 @@ def run_smoke_test(
             if row["quarantine_bucket"]:
                 quarantine.setdefault(row["quarantine_bucket"], []).append(row["relpath"])
         rows_by_source[source_name] = rows
-        per_source[source_name] = _summarize(rows, len(ingestable))
+        limits = sources[source_name].get("selection_limits")
+        per_source[source_name] = _summarize(rows, len(ingestable), limits)
 
     checks = _verdict_checks(per_source, thresholds)
     verdict = "fail" if any(check["status"] == "fail" for check in checks) else "pass"

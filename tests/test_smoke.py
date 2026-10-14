@@ -100,3 +100,44 @@ def test_smoke_sample_is_deterministic(
 
     # Timing and memory differ between runs; which files were picked must not.
     assert sample_ids(first) == sample_ids(second)
+
+
+def _config_with_limits(make_config, positive: Path, negative: Path, limits: dict):
+    sources = _sources(positive, negative)
+    sources["objaverse"]["selection_limits"] = limits
+    return make_config(
+        sources=sources,
+        outputs={"smoke_report": "reports/smoke.json"},
+        extra={"formats": {"extensions": [".obj"]}},
+    )
+
+
+def test_smoke_enforces_declared_selection_limits(
+    make_config, source_tree, valid_mesh: str
+) -> None:
+    """The negative set's screening rule is part of its label definition."""
+    positive = source_tree("positive", {"a.obj": valid_mesh})
+    negative = source_tree("negative", {"big.obj": valid_mesh})  # cube: 12 faces
+
+    config = _config_with_limits(make_config, positive, negative, {"max_face_count": 4})
+    _, report = run_smoke_test(load_project_config(config))
+
+    assert report["verdict"] == "fail"
+    failed = {check["name"] for check in report["checks"] if check["status"] == "fail"}
+    assert "objaverse.selection_limits" in failed
+    assert report["sources"]["objaverse"]["selection_limit_violation_count"] == 1
+    assert report["sources"]["objaverse"]["selection_limit_violations"][0]["face_count"] == 12
+
+
+def test_smoke_accepts_assets_inside_selection_limits(
+    make_config, source_tree, valid_mesh: str
+) -> None:
+    positive = source_tree("positive", {"a.obj": valid_mesh})
+    negative = source_tree("negative", {"small.obj": valid_mesh})
+
+    config = _config_with_limits(make_config, positive, negative, {"max_face_count": 100})
+    _, report = run_smoke_test(load_project_config(config))
+
+    assert report["verdict"] == "pass"
+    check = next(item for item in report["checks"] if item["name"] == "objaverse.selection_limits")
+    assert check["status"] == "pass"

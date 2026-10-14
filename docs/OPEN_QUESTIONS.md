@@ -8,7 +8,9 @@
 4. 训练输入是手工几何特征、点云、三角面序列、渲染图像，还是已有组内模型；
 5. 是否统一三角化，以及三角化发生在筛选前还是训练前；
 6. 面数、顶点数和显存预算上限；
-7. Objaverse 负样本的具体选择标准，以及是否保留类别和选择原因；
+7. Objaverse 负样本的具体选择标准，以及是否保留类别和选择原因（已确认：面数与顶点数
+   小于 20000、均为三角网格、不要求质量；见 `docs/LABELING_GUIDE.md`，已写入
+   `sources.objaverse.selection_rule` 与 `selection_limits`）；
 8. 是否能从 Objaverse 补充少量人工确认的正样本，或从 Toys4K 找到负例，以减轻“来源等于标签”的混杂。
 
 确认这些信息后，才能稳定实现规范化、近重复检测、高级 Artistic 特征、统一渲染和最终训练入口。
@@ -36,8 +38,11 @@ configs/paths.remote.yaml`，报告里的 `unconfigured_extensions`、`aggregate
 
 ## 需要用户拍板
 
-`selection_rule` 目前是配置模板里的占位值。3000 个 Objaverse 负样本是按什么标准挑出来
-的（按类别、按面数、按渲染截图人工筛、还是随机），必须写进 `sources.objaverse.selection_rule`。
-这是整个项目里最薄弱的一环：正样本全部来自 Toys4K、负样本全部来自 Objaverse，来源与标签
-完全混杂，`label_origin=dataset_proxy` 只是把这件事记录下来，并不能消除它。如果负样本的
-挑选标准本身就和"拓扑质量"无关，那么基线分数里有很大一部分可能只是数据集差异。
+负样本挑选标准已确认并落盘（见 `docs/LABELING_GUIDE.md`），代码里由 `smoke` 的
+`selection_limits` 检查守住。剩下的是上面第 8 条：能否从 Objaverse 补少量人工确认的正样本，
+或从 Toys4K 找出负例，让标签不再与来源完全相关。
+
+这是整个项目最薄弱的一环：`label_origin=dataset_proxy` 只是把"来源与标签完全混杂"这件事
+记录下来，并不能消除它。在补上跨来源样本之前，任何模型分数都至少有三种解释——学到的
+可能是 Artistic 拓扑，也可能是 Toys4K 与 Objaverse 的格式/尺度/类别差异，还可能只是
+"面数少"。区分它们要靠面数匹配测试集和人工盲审集，不能靠单一测试分数。
