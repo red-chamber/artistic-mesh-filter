@@ -37,7 +37,7 @@ def compute_basic_features(
     vertices: np.ndarray,
     faces: np.ndarray,
     *,
-    zero_area_epsilon: float = 1.0e-12,
+    zero_area_epsilon_ratio: float = 1.0e-6,
     equilateral_threshold: float = 0.90,
     sliver_threshold: float = 0.05,
     small_angle_threshold_deg: float = 5.0,
@@ -62,7 +62,14 @@ def compute_basic_features(
     side_c = np.linalg.norm(triangles[:, 0] - triangles[:, 1], axis=1)
     cross = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
     areas = 0.5 * np.linalg.norm(cross, axis=1)
-    zero_area = areas <= zero_area_epsilon
+
+    # The threshold is relative to the median face area on purpose. An absolute
+    # epsilon means something different at every scale: on this dataset the two
+    # sources span four orders of magnitude in size, so a fixed 1e-12 would flag
+    # every face of a millimetre-scale mesh and none of a kilometre-scale one.
+    median_area = float(np.median(areas))
+    threshold = zero_area_epsilon_ratio * median_area if median_area > 0.0 else 0.0
+    zero_area = areas <= threshold
 
     length_sq_sum = side_a**2 + side_b**2 + side_c**2
     equilateral = np.divide(

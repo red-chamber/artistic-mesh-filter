@@ -11,7 +11,9 @@
 
 ## Face validity
 
-- `zero_area_face_count`：面积小于等于 `zero_area_epsilon` 的面数；
+- `zero_area_face_count`：面积小于等于 `zero_area_epsilon_ratio` 乘该网格中位面面积的面数
+  （默认为中位面面积的 $10^{-6}$）。阈值取相对值而非绝对值，因为两个来源的尺度相差四个
+  数量级（0.7 到 12160），一个固定的绝对 epsilon 在不同尺度上含义完全不同；
 - `duplicate_face_count`：忽略顶点顺序后重复的额外三角面数量。
 
 这些指标描述几何可用性，不直接定义 Artistic 标签。

@@ -11,9 +11,11 @@ sources:
     root: "/path/to/selected_objaverse"
     label: 0
     label_origin: "dataset_proxy"
-    # The negative set was screened by hand before it reached this project, so
-    # the screening rule is part of the label definition, not a detail.
-    selection_rule: "user_screened_triangle_meshes_under_20k_faces_and_vertices"
+    # The negative set was produced by a separate pipeline before it reached this
+    # project, so its screening rule is part of the label definition, not a
+    # detail. See docs/DATA_CARD.md for the parameters read back from that
+    # pipeline, including the two biases it introduces.
+    selection_rule: "objaverse_seeded_random_sample_under_20k_faces_and_vertices_triangular"
     # Declared bounds of that screening. `smoke` checks the sampled assets
     # against them, so a wrong or unscreened directory fails the gate instead of
     # silently redefining what "negative" means. Counts are measured after

@@ -13,15 +13,43 @@
 
 ## Negative selection rule
 
-负样本不是从 Objaverse 随机抽取的，而是提前人工筛过（用户 2026-10-14 说明）：
+负样本的来历已从生产流水线的原始记录核实（2026-10-15）。流水线本体在数据设备的
+`D:\CodexTools\objaverse_bad_3000\`（`pipeline.py`、`blender_worker.py`、`download_worker.py`），
+它的 `status.json` 记录了全部参数：
 
-- 面数小于 20000，且顶点数小于 20000；
-- 均为三角网格；
-- 不要求质量：允许破碎几何、非必要的面数堆积和局部退化。
+```text
+seed 20261014   target 3000   max_vertices 20000   max_faces 20000
+processed 13992   accepted 3000   rejected 3478   failed 7514
+```
 
-记录方式：`sources.objaverse.selection_rule` 存机器可读的规则名，
+据此，负样本不是人工精选，而是：
+
+- 按种子 `20261014` 的顺序遍历 Objaverse 候选，逐个下载；
+- 用 Blender 导入，接受条件为顶点数小于 20000 **且**面数小于 20000 **且**该网格是三角网格；
+- 接受后用 Blender 的 OBJ 导出器重写一遍，存成 `models/<uid>.obj`。
+
+每个被接受的模型在上游 `manifest.csv` 里都有记录，字段为
+`uid, vertices, faces, triangular, obj_bytes, obj_path, processed_at`。所以"均为三角网格"
+这一条是可核对的：以上游 `manifest.csv` 的 `triangular` 字段为准，不需要重新解析。
+
+记录到本项目的方式：`sources.objaverse.selection_rule` 存机器可读的规则名，
 `sources.objaverse.selection_limits` 存上下界，`smoke` 会据此检查抽样资产，超出即判失败。
-细节与后果见 `docs/LABELING_GUIDE.md`。
+
+## Two biases this rule introduces
+
+存活偏差。13992 个候选里有 7514 个（54%）下载超时、TLS 断连或 Blender 导入失败，直接出局。
+这份负样本集只包含"能下载且能被 Blender 导入"的模型，不代表 Objaverse 的整体分布。
+
+导出器指纹。3000 个负样本全部经过 Blender 的 OBJ 导出器重写，而 1567 个正样本来自 Toys4K
+的原始发布。顶点顺序、法线写法、小数精度都会带 Blender 的系统性痕迹。这意味着"模型学会
+区分两个来源"这条捷径在这个数据集里格外宽：它甚至不需要看几何，看文件的写法就够了。
+
+实测：尺度通道（Toys4K 最长边恒为 2.0，Objaverse 0.71–12160，零重叠）与 UV 存在率
+（70% 对 0%）都是几乎完美的判别器；面数通道则大幅重叠（[12, 15000] 带内各占 92.8% 和
+100%），有信息量但不是一票否决。见 `docs/LABELING_GUIDE.md`。
+
+另外，实测发现 3 个重复组（7 个资产）同时带正负标签——同一份几何体经两个来源进入了数据
+集。它们已被整体移出并在 `splits/v1/conflicts.csv` 中记录。
 
 ## Known limitation
 

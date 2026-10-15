@@ -17,7 +17,7 @@ from mesh_filter.features.basic import compute_basic_features
 from mesh_filter.mesh_io import concatenate_for_metrics, load_mesh_parts
 
 FEATURE_OPTION_KEYS = (
-    "zero_area_epsilon",
+    "zero_area_epsilon_ratio",
     "equilateral_threshold",
     "sliver_threshold",
     "small_angle_threshold_deg",

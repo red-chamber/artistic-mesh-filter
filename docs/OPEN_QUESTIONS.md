@@ -15,10 +15,11 @@
 
 确认这些信息后，才能稳定实现规范化、近重复检测、高级 Artistic 特征、统一渲染和最终训练入口。
 
-其中第 2、3、5 条不再需要口头回答：远端跑 `python -m mesh_filter probe --config
-configs/paths.remote.yaml`，报告里的 `unconfigured_extensions`、`aggregate.containers`、
-`multi_geometry_share`、`records_with_instancing`、`aggregate.longest_extent` 就是答案，见
-`docs/REMOTE_WORKFLOW.md`。第 6 条由 `smoke` 的耗时与内存读数支撑。第 7 条仍需人来定。
+第 2、3、5 条已在真实数据上回答（2026-10-15 全量首跑）：两个来源都是平铺的单网格 `.obj`，
+容器全部是 `Trimesh`，`multi_geometry_share` 与 `records_with_instancing` 均为 0，所以"一份
+资产就是一个三角网格"成立，一环邻域不会跨几何体。第 6 条由 `smoke` 的耗时与内存读数支撑
+（单模型最慢 2.1 秒，全量 4567 个约 9 分钟）。第 7 条已由用户给出并核实，见
+`docs/DATA_CARD.md`。
 
 ## 本机骨架的明确边界
 
@@ -37,6 +38,24 @@ configs/paths.remote.yaml`，报告里的 `unconfigured_extensions`、`aggregate
   样本表和分层，评审者要看的图片依赖尚未实现的渲染环节；
 - `runtime.resume` 复用已解析的行，前提是只读源在两次运行之间没有变化。源变更后必须
   设回 `false` 全量重算，否则会保留过期特征。
+
+## 已知基线（2026-10-15 全量首跑）
+
+4567 个资产全部解析成功（403 个带几何警告），划分 train 3192 / val 685 / test 683，
+3 个标签冲突组共 7 个资产被移出。计数基线（只用顶点数、面数、边数、连通分量、边界边）：
+
+| 口径 | n | precision@50 | balanced accuracy | ROC AUC |
+| --- | --- | --- | --- | --- |
+| val | 685 | 0.28（基准 0.343） | 0.601 | 0.621 |
+| test | 683 | 0.20（基准 0.343） | 0.588 | 0.595 |
+| matched_test | 456 | 0.54（基准 0.500） | 0.518 | 0.523 |
+
+读法：计数特征在普通测试集上只比随机好一点，在头部排序上甚至比基准更差；把面数固定住
+之后完全回到随机，说明那点微弱信号来自面数分布差而非拓扑。所以后续任何模型的合格线是
+“显著超过 test 的 0.595，并且同时超过 matched_test 的 0.523”。
+
+val 与 test 是同一分布的两次抽样（n≈680），AUC 差 0.026——**这个量级就是噪声**，差 0.03
+以内的改进不算改进。
 
 ## 需要用户拍板
 

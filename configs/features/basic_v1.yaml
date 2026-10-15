@@ -1,6 +1,8 @@
 version: "basic-features-v1"
 
-zero_area_epsilon: 1.0e-12
+# A face counts as degenerate when its area is at most this fraction of the
+# median face area of the same mesh, so the threshold travels across scales.
+zero_area_epsilon_ratio: 1.0e-6
 equilateral_threshold: 0.90
 sliver_threshold: 0.05
 small_angle_threshold_deg: 5.0
