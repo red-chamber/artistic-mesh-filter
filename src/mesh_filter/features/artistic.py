@@ -354,9 +354,14 @@ def _qem_redundancy_median(
 
     local_lengths = vertices[unique_edges[:, 1]] - vertices[unique_edges[:, 0]]
     lengths = np.linalg.norm(local_lengths, axis=1)
-    length_sum = np.bincount(incidence_vertices, weights=lengths[incidence_edges], minlength=vertex_count)
+    length_sum = np.bincount(
+        incidence_vertices, weights=lengths[incidence_edges], minlength=vertex_count
+    )
     mean_length = np.divide(
-        length_sum, np.maximum(neighbour_count, 1), out=np.ones(vertex_count), where=has_neighbours
+        length_sum,
+        np.maximum(neighbour_count, 1),
+        out=np.ones(vertex_count),
+        where=has_neighbours,
     )
 
     in_use = has_neighbours.copy()
