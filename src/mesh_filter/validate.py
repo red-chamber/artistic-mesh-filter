@@ -35,6 +35,7 @@ STATUS_FIELDS = [
     "duplicate_face_count",
     "boundary_edge_count",
     "nonmanifold_edge_count",
+    "equilateral_median",
     "equilateral_ratio",
     "sliver_ratio",
     "small_angle_ratio",

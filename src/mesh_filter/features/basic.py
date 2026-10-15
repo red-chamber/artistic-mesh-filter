@@ -121,6 +121,11 @@ def compute_basic_features(
         "duplicate_face_count": int(np.maximum(face_counts - 1, 0).sum()),
         "boundary_edge_count": int((edge_counts == 1).sum()),
         "nonmanifold_edge_count": int((edge_counts > 2).sum()),
+        # The median carries the "faces must not be too regular" criterion on real
+        # data; the ratio above does not. Measured on the real corpus the ratio's
+        # median is 0.03 with a third quartile of 0.09, so a threshold at 0.9
+        # leaves the column flat while the median still moves.
+        "equilateral_median": float(np.median(equilateral)),
         "equilateral_ratio": float((equilateral > equilateral_threshold).mean()),
         "sliver_ratio": float((equilateral < sliver_threshold).mean()),
         "small_angle_ratio": float((min_angles < small_angle_threshold_deg).mean()),

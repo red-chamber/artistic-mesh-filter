@@ -302,8 +302,16 @@ def _qem_redundancy_median(
 
     A vertex in a flat, oversampled region scores near zero: its neighbours are
     on the same plane, so removing it changes nothing. A vertex carrying a crease
-    or a corner scores high. Normalised by the bounding-box diagonal so the number
-    means the same thing at every scale.
+    or a corner scores high.
+
+    The error is divided by the square of the vertex's mean incident edge length,
+    not by the bounding-box diagonal. Dividing by the box made every value on the
+    real corpus collapse to zero — a fine tessellation of a smooth surface has a
+    vanishing collapse error compared with the object's size — and the column
+    carried no information. Against the local spacing the number instead reads as
+    "how much shape this vertex holds relative to how finely it is surrounded",
+    which is the criterion's "uses a face where two would do". Invariant to scale,
+    and comparable between meshes.
     """
     triangles = vertices[faces]
     cross = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
@@ -344,15 +352,19 @@ def _qem_redundancy_median(
     homogeneous = np.concatenate((target, np.ones((vertex_count, 1))), axis=1)
     error = np.einsum("vi,vij,vj->v", homogeneous, accumulated, homogeneous)
 
-    extent = float(np.linalg.norm(vertices.max(axis=0) - vertices.min(axis=0)))
-    if extent <= 0:
-        raise GeometryError("mesh has no extent")
+    local_lengths = vertices[unique_edges[:, 1]] - vertices[unique_edges[:, 0]]
+    lengths = np.linalg.norm(local_lengths, axis=1)
+    length_sum = np.bincount(incidence_vertices, weights=lengths[incidence_edges], minlength=vertex_count)
+    mean_length = np.divide(
+        length_sum, np.maximum(neighbour_count, 1), out=np.ones(vertex_count), where=has_neighbours
+    )
 
     in_use = has_neighbours.copy()
     in_use[faces.ravel()] = True
+    in_use &= mean_length > 0
     if not in_use.any():
         raise GeometryError("no vertex is used by a face")
-    return float(np.median(error[in_use] / extent**2))
+    return float(np.median(error[in_use] / mean_length[in_use] ** 2))
 
 
 def compute_artistic_features(
