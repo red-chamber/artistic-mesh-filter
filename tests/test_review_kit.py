@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from mesh_filter.config import load_project_config
-from mesh_filter.evaluation.review_kit import prepare_review
+from mesh_filter.evaluation.review_kit import _remap_to_used_vertices, prepare_review
 from mesh_filter.manifest import build_manifest, read_csv, write_csv
 
 OUTPUTS = {
@@ -120,6 +120,30 @@ def test_every_file_gets_the_same_timestamp(
 
     stamps = {os.stat(output / f"A000{i}.obj").st_mtime for i in (1, 2)}
     assert len(stamps) == 1
+
+
+def test_remapping_preserves_the_triangles() -> None:
+    """Dropping orphan vertices must not move, drop or rewire a single face."""
+    import numpy as np
+
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [9.0, 9.0, 9.0],  # orphan
+            [1.0, 1.0, 0.0],
+        ]
+    )
+    faces = np.array([[0, 1, 2], [1, 4, 2]])
+
+    new_vertices, new_faces = _remap_to_used_vertices(vertices, faces)
+
+    assert len(new_faces) == len(faces)
+    for old_face, new_face in zip(faces, new_faces, strict=True):
+        assert {tuple(np.round(old_vertex, 9)) for old_vertex in vertices[old_face]} == {
+            tuple(np.round(new_vertex, 9)) for new_vertex in new_vertices[new_face]
+        }
 
 
 def test_stale_files_from_an_earlier_sample_are_removed(
