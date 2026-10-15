@@ -9,6 +9,7 @@ from mesh_filter.config import load_project_config
 from mesh_filter.deduplicate import mark_duplicates
 from mesh_filter.evaluation.blind_audit import build_audit_gold
 from mesh_filter.evaluation.matched_test import build_matched_test
+from mesh_filter.evaluation.review_kit import prepare_review
 from mesh_filter.manifest import build_manifest
 from mesh_filter.models.count_baseline import train_count_baseline
 from mesh_filter.probe import probe_sources
@@ -75,6 +76,12 @@ def _parser() -> argparse.ArgumentParser:
 
     audit = add_config("build-audit-gold", "Draw the blind human-review sample")
     audit.add_argument("--size", type=int, default=None)
+
+    review = add_config(
+        "prepare-review",
+        "Write anonymised meshes so the audit can be judged in a 3D viewer",
+    )
+    review.add_argument("--limit", type=int, default=None, help="Only the first N rows")
     return parser
 
 
@@ -189,6 +196,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 ensure_ascii=False,
             )
         )
+    elif args.command == "prepare-review":
+        output, report = prepare_review(config, args.limit)
+        print(json.dumps(report, ensure_ascii=False))
     elif args.command == "train-count-baseline":
         output, metrics = train_count_baseline(config, config.resolve(args.experiment))
         print(json.dumps({"output": str(output), "metrics": metrics}, ensure_ascii=False))

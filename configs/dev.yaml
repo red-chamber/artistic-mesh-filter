@@ -24,6 +24,7 @@ outputs:
   matched_test: "work/dev/splits/v1/matched_test.csv"
   audit_gold: "work/dev/labels/audit_gold.csv"
   audit_gold_key: "work/dev/labels/audit_gold_key.csv"
+  review_dir: "work/dev/review"
 
 formats:
   extensions: [".obj"]

@@ -34,8 +34,9 @@
   不同桶，检测不到；
 - 高级 Artistic 特征只有定义，没有实现，配置开关全为 `false`；
 - 划分产出 `train/val/test/all`，另外 `build-matched-test` 与 `build-audit-gold` 会生成
-  `matched_test.csv`、`audit_gold.csv` 和它的对照表。但盲审还缺渲染图：`audit_gold` 只给出
-  样本表和分层，评审者要看的图片依赖尚未实现的渲染环节；
+  `matched_test.csv`、`audit_gold.csv` 和它的对照表，`prepare-review` 再把它变成匿名化的
+  3D 查看目录。第一轮盲审不需要渲染（判据是拓扑，直接看 3D 更准，见
+  `docs/LABELING_GUIDE.md`）；渲染只在需要判断外观、轮廓走形这类问题时才要；
 - `runtime.resume` 复用已解析的行，前提是只读源在两次运行之间没有变化。源变更后必须
   设回 `false` 全量重算，否则会保留过期特征。
 

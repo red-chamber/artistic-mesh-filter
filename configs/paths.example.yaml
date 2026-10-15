@@ -38,6 +38,8 @@ outputs:
   # The blind sheet and its answer key must stay in separate files.
   audit_gold: "data/labels/audit_gold.csv"
   audit_gold_key: "data/labels/audit_gold_key.csv"
+  # Anonymised meshes the reviewer opens; see `prepare-review`.
+  review_dir: "review"
 
 # Extensions the pipeline will ingest. The probe reports any file outside this
 # list, because those files are invisible to every other command.

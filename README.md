@@ -34,6 +34,8 @@
 - `smoke`：在全量运行前对少量真实模型跑一遍完整单文件流程，给出机器可读的通过/不通过裁决；
 - `build-matched-test`：从冻结划分里构造面数匹配的正负配对，让分数不再可能来自"这一类面数少"；
 - `build-audit-gold`：抽一份盲审样本，输出评审者表与对照表两个文件；
+- `prepare-review`：把盲审样本写成一批匿名化的最简 OBJ，交付评审者直接用 3D 查看器逐个
+  打开判断（不需要渲染图片）；
 - 环境快照：记录 Python、关键库版本、git commit 和加速器信息。
 
 暂未锁定的内容见 [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md)。
@@ -74,6 +76,7 @@ uv run python scripts/05_probe_formats.py --config configs/dev.yaml
 uv run python scripts/06_smoke_test.py --config configs/dev.yaml
 uv run python scripts/07_build_matched_test.py --config configs/dev.yaml
 uv run python scripts/08_build_audit_gold.py --config configs/dev.yaml
+uv run python scripts/09_prepare_review.py --config configs/dev.yaml
 ```
 
 `04_train_count_baseline.py` 需要 `train` 额外依赖（scikit-learn、joblib）：
@@ -134,6 +137,7 @@ probe（只读，看真实格式）
 - `train.csv`、`val.csv`、`test.csv`：冻结的数据划分；
 - `matched_test.csv`：面数匹配的正负配对测试集，只用于诊断；
 - `audit_gold.csv` 与 `audit_gold_key.csv`：盲审表与对照表，后者不得交给评审者；
+- `review/A0001.obj` …：交给评审者的匿名化模型，配上同目录的 `REVIEW_PROTOCOL.md`；
 - `runs/<run-id>/`：实验配置、指标、预测和模型文件；
 - `reports/probe_report.json`、`reports/smoke_report.json`：探测与冒烟报告。
 

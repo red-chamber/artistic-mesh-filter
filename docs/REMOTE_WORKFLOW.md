@@ -122,9 +122,14 @@ python -m mesh_filter deduplicate     --config configs/paths.remote.yaml
 python -m mesh_filter split           --config configs/paths.remote.yaml
 python -m mesh_filter build-matched-test --config configs/paths.remote.yaml
 python -m mesh_filter build-audit-gold   --config configs/paths.remote.yaml
+python -m mesh_filter prepare-review     --config configs/paths.remote.yaml
 python -m mesh_filter train-count-baseline --config configs/paths.remote.yaml \
   --experiment configs/experiments/count_baseline.yaml
 ```
+
+`prepare-review` 写出匿名化的 3D 查看目录（`outputs.review_dir`），是人工盲审的交接物：
+把一个扁平目录连同 `REVIEW_PROTOCOL.md` 交给评审者，用任意 3D 查看器逐个打开、按说明填
+`human_label`。`audit_gold_key.csv` 不能一起交出去。
 
 `split` 的输出里要确认 `conflicting_groups`：非零说明存在"同一几何体既是正样本又是负样本"
 的重复组，它们已被整体移出并记进 `conflicts.csv`。数量应该是零星的；如果很多，说明两个
@@ -168,6 +173,7 @@ data/manifests/basic_features_v1.csv
 data/manifests/assets_deduplicated_v1.csv
 data/splits/v1/          （含 matched_test.csv）
 data/labels/             （含 audit_gold.csv；audit_gold_key.csv 一并回传但不得交给评审者）
+review/                  （prepare-review 的匿名化模型目录，交给评审者的那一份）
 runs/<run-id>/           （resolved_config、metrics.json、predictions.csv）
 logs/
 少量错误案例与画廊
