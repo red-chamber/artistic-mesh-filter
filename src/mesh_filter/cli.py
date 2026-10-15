@@ -35,6 +35,11 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("configs/features/basic_v1.yaml"),
     )
+    validate.add_argument(
+        "--artistic-config",
+        type=Path,
+        default=Path("configs/features/artistic_v1.yaml"),
+    )
 
     add_config(
         "deduplicate",
@@ -93,7 +98,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         output, count = build_manifest(config)
         print(json.dumps({"output": str(output), "asset_count": count}, ensure_ascii=False))
     elif args.command == "validate":
-        output, counts = validate_manifest(config, config.resolve(args.feature_config))
+        output, counts = validate_manifest(
+            config,
+            config.resolve(args.feature_config),
+            config.resolve(args.artistic_config),
+        )
         print(json.dumps({"output": str(output), **counts}, ensure_ascii=False))
     elif args.command == "deduplicate":
         output, report = mark_duplicates(config)

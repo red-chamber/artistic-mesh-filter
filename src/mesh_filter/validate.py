@@ -8,6 +8,7 @@ from mesh_filter.config import ProjectConfig
 from mesh_filter.inspection import (
     evaluate_asset,
     has_warning,
+    load_artistic_features,
     load_feature_options,
     safe_message,
 )
@@ -45,10 +46,12 @@ def _reusable_rows(
     output: Path,
     resume: bool,
     current_asset_ids: set[str],
+    required: list[str],
 ) -> dict[str, dict[str, str]]:
     """Rows from a previous run that can be kept instead of recomputed.
 
-    Resuming assumes the read-only sources have not changed. A stale row is
+    Resuming assumes the read-only sources have not changed, and that the row
+    carries every column this run is going to write. A stale or narrow row is
     worse than a slow rerun, so this is opt-in through `runtime.resume`.
     """
     if not resume or not output.exists():
@@ -58,7 +61,7 @@ def _reusable_rows(
         asset_id = row.get("asset_id", "")
         if asset_id not in current_asset_ids or row.get("parse_status") != "parsed":
             continue
-        if all(field in row for field in STATUS_FIELDS):
+        if all(field in row for field in required):
             reusable[asset_id] = row
     return reusable
 
@@ -66,11 +69,17 @@ def _reusable_rows(
 def validate_manifest(
     config: ProjectConfig,
     feature_config_path: str | Path | None = None,
+    artistic_config_path: str | Path | None = None,
 ) -> tuple[Path, dict[str, int]]:
     manifest_path = config.output_path("manifest")
     rows = read_csv(manifest_path)
     options = load_feature_options(feature_config_path)
+    artistic = load_artistic_features(artistic_config_path)
     output = config.output_path("features")
+
+    fieldnames = list(STATUS_FIELDS)
+    if artistic:
+        fieldnames += ["artistic_status", *sorted(artistic)]
 
     runtime = config.values.get("runtime", {})
     continue_on_error = bool(runtime.get("continue_on_error", True))
@@ -79,6 +88,7 @@ def validate_manifest(
         output,
         bool(runtime.get("resume", False)),
         {row["asset_id"] for row in rows},
+        fieldnames,
     )
 
     output_rows: list[dict[str, Any]] = []
@@ -101,7 +111,7 @@ def validate_manifest(
         else:
             mesh_path = config.source_root(record["source_dataset"]) / record["raw_relpath"]
             try:
-                features = evaluate_asset(mesh_path, options)
+                features = evaluate_asset(mesh_path, options, artistic)
                 warned = has_warning(features)
                 validity = "valid_with_warnings" if warned else "valid"
                 output_rows.append(
@@ -135,7 +145,7 @@ def validate_manifest(
             # Rewriting a prefix of the table is cheap next to parsing, and it is
             # what makes an interrupted run resumable: `runtime.resume` can only
             # reuse rows that reached disk.
-            write_csv(output, output_rows, STATUS_FIELDS)
+            write_csv(output, output_rows, fieldnames)
             print(
                 f"validated {position}/{len(rows)} "
                 f"(parsed={counts['parsed']} failed={counts['failed']})",
@@ -143,5 +153,5 @@ def validate_manifest(
                 flush=True,
             )
 
-    write_csv(output, output_rows, STATUS_FIELDS)
+    write_csv(output, output_rows, fieldnames)
     return output, counts

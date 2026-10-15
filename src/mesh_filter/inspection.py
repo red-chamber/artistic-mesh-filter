@@ -13,6 +13,8 @@ from typing import Any
 import numpy as np
 
 from mesh_filter.config import load_yaml
+from mesh_filter.features.artistic import COLUMNS as ARTISTIC_COLUMNS
+from mesh_filter.features.artistic import compute_artistic_features
 from mesh_filter.features.basic import compute_basic_features
 from mesh_filter.mesh_io import concatenate_for_metrics, load_mesh_parts
 
@@ -52,11 +54,40 @@ def load_asset_geometry(
     return np.asarray(mesh.vertices), np.asarray(mesh.faces), len(parts)
 
 
-def evaluate_asset(mesh_path: str | Path, options: dict[str, Any]) -> dict[str, Any]:
-    """Load one asset and compute basic features. Raises on unusable input."""
+def load_artistic_features(path: str | Path | None) -> frozenset[str]:
+    """Read which artistic feature columns are switched on.
+
+    The config switches carry the same names as the columns they produce.
+    """
+    if path is None:
+        return frozenset()
+    raw = load_yaml(path)
+    enabled = raw.get("features", {})
+    return frozenset(name for name, on in enabled.items() if on and name in ARTISTIC_COLUMNS)
+
+
+def evaluate_asset(
+    mesh_path: str | Path,
+    options: dict[str, Any],
+    artistic: frozenset[str] | set[str] = frozenset(),
+) -> dict[str, Any]:
+    """Load one asset and compute its features. Raises on unusable input.
+
+    A mesh that parses but is too small or too degenerate for the artistic
+    features is still a parsed asset: those columns stay empty and
+    `artistic_status` records why, so the failure is visible without turning a
+    usable mesh into a parse failure.
+    """
     vertices, faces, part_count = load_asset_geometry(mesh_path)
     features = compute_basic_features(vertices, faces, **options)
-    return {"part_count": part_count, **features}
+    record: dict[str, Any] = {"part_count": part_count, **features}
+    if artistic:
+        try:
+            record.update(compute_artistic_features(vertices, faces, artistic))
+            record["artistic_status"] = "ok"
+        except Exception as error:  # noqa: BLE001 - recorded in its own column
+            record["artistic_status"] = f"failed:{type(error).__name__}"
+    return record
 
 
 def has_warning(features: dict[str, Any]) -> bool:

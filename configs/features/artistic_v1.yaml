@@ -1,15 +1,24 @@
-version: "artistic-features-v1-draft"
-status: "requires_real_data_validation"
+version: "artistic-features-v1"
+status: "implemented"
 
-# Definitions are documented in docs/FEATURE_DEFINITIONS.md and are the contract
-# for the remote implementation. Every flag is false because none of these is
-# implemented yet: the topological assumptions (one geometry per asset, no
-# non-unit transforms) must be confirmed by `probe` on the real data first.
-# Set a flag to true only in the same change that implements it.
+# 判据见 docs/LABELING_GUIDE.md，方向见 docs/FEATURE_DEFINITIONS.md。
+# 开关名就是它写进特征表的列名，不需要翻译。
+#
+# 期望方向里标了"待实测"的几条，是按判据推出来的猜测，还没有真实数据支持；
+# 它们的正负号要与 200 个人工盲审标签对一遍才能定下来。
+
 features:
-  vertex_degree_histogram: false
-  one_ring_edge_length_cv: false
-  local_edge_direction_entropy: false
-  neighboring_direction_consistency: false
-  curvature_density_correlation: false
-  qem_redundancy: false
+  # 顶点分布整齐：手工网格的度数集中在少数几个值上，扫描网格的度数散得开。
+  vertex_degree_mode_share: true        # 高 = 好
+  vertex_degree_entropy: true           # 低 = 好
+  # 局部边长整齐。方向待实测：扫描网格的局部边长同样很均匀。
+  one_ring_edge_length_cv_median: true
+  # 局部边方向张量的各向异性。方向待实测，而且已被合成例子否掉过一次：
+  # 入射方向成对对称的顶点（八面体顶点、规则网格顶点）都会趋近 0。
+  local_edge_direction_anisotropy_mean: true
+  # 共顶点的边更趋共线。方向待实测：规则铺砌的顶点也可能偏共线。
+  neighboring_direction_consistency_mean: true
+  # 平坦处稀疏、转折处密集。判据里"顶点分布整齐"的直接对应量。
+  curvature_density_correlation: true   # 正 = 好
+  # 顶点都不冗余：删掉任何一个都会丢形状。
+  qem_redundancy_median: true           # 高 = 好
