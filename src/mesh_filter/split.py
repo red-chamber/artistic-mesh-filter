@@ -8,6 +8,8 @@ from typing import Any
 from mesh_filter.config import ProjectConfig, load_yaml
 from mesh_filter.manifest import read_csv, write_csv
 
+CONFLICT_FIELDS = ["duplicate_group_id", "asset_id", "source_dataset", "label"]
+
 
 def _assign_groups(
     grouped_rows: dict[str, list[dict[str, str]]],
@@ -95,14 +97,46 @@ def create_splits(
     for row in rows:
         group_id = row.get("duplicate_group_id") or row["asset_id"]
         grouped[group_id].append(row)
-    assignments = _assign_groups(grouped, ratios, seed)
-    assignments = _ensure_split_coverage(assignments, grouped, ratios)
 
     output_root = config.output_path("split_root")
     output_root.mkdir(parents=True, exist_ok=True)
+
+    # A duplicate group holding both labels is one geometry with contradictory
+    # supervision - the same model reaching the dataset through two sources. No
+    # assignment is defensible, so the whole group leaves the dataset and is
+    # written to conflicts.csv rather than silently assigned a side.
+    conflicting = {
+        group_id: members
+        for group_id, members in grouped.items()
+        if len({row["label"] for row in members}) > 1
+    }
+    excluded_ids: set[str] = set()
+    if conflicting:
+        conflict_rows: list[dict[str, Any]] = []
+        for group_id in sorted(conflicting):
+            for member in conflicting[group_id]:
+                excluded_ids.add(member["asset_id"])
+                conflict_rows.append(
+                    {
+                        "duplicate_group_id": group_id,
+                        "asset_id": member["asset_id"],
+                        "source_dataset": member["source_dataset"],
+                        "label": member["label"],
+                    }
+                )
+            del grouped[group_id]
+        write_csv(output_root / "conflicts.csv", conflict_rows, CONFLICT_FIELDS)
+
+    assignments = _assign_groups(grouped, ratios, seed)
+    assignments = _ensure_split_coverage(assignments, grouped, ratios)
+    if not assignments:
+        raise ValueError("Every asset was excluded as a label conflict; nothing left to split")
+
     by_split: dict[str, list[dict[str, str]]] = {name: [] for name in ratios}
     all_rows: list[dict[str, str]] = []
     for row in rows:
+        if row["asset_id"] in excluded_ids:
+            continue
         group_id = row.get("duplicate_group_id") or row["asset_id"]
         row["split"] = assignments[group_id]
         by_split[row["split"]].append(row)
@@ -112,4 +146,12 @@ def create_splits(
     for name, split_rows in by_split.items():
         write_csv(output_root / f"{name}.csv", split_rows, fields)
     write_csv(output_root / "all.csv", all_rows, fields)
-    return output_root, {name: len(split_rows) for name, split_rows in by_split.items()}
+
+    counts: dict[str, Any] = {
+        name: len(split_rows) for name, split_rows in by_split.items()
+    }
+    counts["conflicting_groups"] = len(conflicting)
+    counts["assets_excluded_as_conflicting"] = len(excluded_ids)
+    if conflicting:
+        counts["conflict_report"] = str(output_root / "conflicts.csv")
+    return output_root, counts

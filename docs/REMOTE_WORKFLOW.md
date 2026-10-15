@@ -126,6 +126,10 @@ python -m mesh_filter train-count-baseline --config configs/paths.remote.yaml \
   --experiment configs/experiments/count_baseline.yaml
 ```
 
+`split` 的输出里要确认 `conflicting_groups`：非零说明存在"同一几何体既是正样本又是负样本"
+的重复组，它们已被整体移出并记进 `conflicts.csv`。数量应该是零星的；如果很多，说明两个
+来源的重叠比预期严重，`label_origin=dataset_proxy` 这个前提本身就有问题了。
+
 `build-matched-test` 与 `build-audit-gold` 必须在 `split` 之后、训练之前跑，**并且要看它们
 打印出来的分箱报告**：
 

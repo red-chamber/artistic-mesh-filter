@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 
 from mesh_filter.config import load_project_config
-from mesh_filter.manifest import write_csv
-from mesh_filter.split import create_splits
+from mesh_filter.manifest import read_csv, write_csv
+from mesh_filter.split import _assign_groups, create_splits
 
 ROW_FIELDS = ["asset_id", "source_dataset", "label", "duplicate_group_id"]
 
@@ -65,14 +65,25 @@ def test_assignment_is_deterministic(make_config, tmp_path: Path) -> None:
     assert (second / "all.csv").read_text(encoding="utf-8") == first_rows
 
 
-def test_group_with_conflicting_labels_is_rejected(make_config, tmp_path: Path) -> None:
+def test_group_with_conflicting_labels_is_never_assigned_a_split(
+    make_config, tmp_path: Path
+) -> None:
+    """The guard inside the assignment step must stay, even though create_splits
+    now filters conflicting groups out before reaching it."""
     rows = _rows(8)
     rows[0]["duplicate_group_id"] = "shared-group"
     rows[-1]["duplicate_group_id"] = "shared-group"
     write_csv(tmp_path / "in.csv", rows, ROW_FIELDS)
 
     with pytest.raises(ValueError):
-        create_splits(load_project_config(_config(make_config, 0.6, 0.2, 0.2)), None)
+        _assign_groups(
+            {
+                "shared-group": [rows[0], rows[-1]],
+                "single": [rows[1]],
+            },
+            {"train": 1.0, "val": 0.0, "test": 0.0},
+            42,
+        )
 
 
 def test_ratios_must_sum_to_one(make_config, tmp_path: Path) -> None:
@@ -80,3 +91,26 @@ def test_ratios_must_sum_to_one(make_config, tmp_path: Path) -> None:
 
     with pytest.raises(ValueError):
         create_splits(load_project_config(_config(make_config, 0.9, 0.2, 0.2)), None)
+
+
+def test_label_conflicting_group_is_excluded_and_recorded(make_config, tmp_path: Path) -> None:
+    """One geometry carrying both labels is unusable, and must not be guessed at."""
+    rows = _rows(6)
+    rows[0]["duplicate_group_id"] = "cross-source"  # label 0
+    rows[-1]["duplicate_group_id"] = "cross-source"  # label 1
+    write_csv(tmp_path / "in.csv", rows, ROW_FIELDS)
+
+    output, counts = create_splits(
+        load_project_config(_config(make_config, 0.7, 0.15, 0.15)), None
+    )
+
+    assert counts["conflicting_groups"] == 1
+    assert counts["assets_excluded_as_conflicting"] == 2
+    assert sum(counts[name] for name in ("train", "val", "test")) == len(rows) - 2
+
+    split_ids = {row["asset_id"] for row in read_csv(output / "all.csv")}
+    assert not split_ids & {"l0n0", "l1n5"}
+
+    conflicts = read_csv(output / "conflicts.csv")
+    assert {row["asset_id"] for row in conflicts} == {"l0n0", "l1n5"}
+    assert {row["label"] for row in conflicts} == {"0", "1"}

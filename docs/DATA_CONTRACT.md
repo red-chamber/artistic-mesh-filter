@@ -59,6 +59,13 @@ sources.<source_dataset>.root + raw_relpath
 合并规则刻意偏向"宁可多合"：错合只是少一点训练数据，漏合会让同一个模型横跨训练与测试，
 把评测静默抬高。因此同一形状的镜像、内外翻转版本也算重复。
 
+### `conflicts.csv`
+
+`split` 会把"同一份几何体同时带正负标签"的重复组整个移出数据集，并在这里逐条记录。
+这种组来自同一个模型经两个来源进入数据集；两侧的标签都是任选的，没有任何分配是站得
+住的，所以既不进训练也不进评测，而是被显式排除并计数
+（`conflicting_groups`、`assets_excluded_as_conflicting`）。
+
 `validate` 默认每次全量重算。设 `runtime.resume: true` 时，它会复用输出表里 `parse_status=parsed`
 的行，只处理新出现的资产，并在返回的计数里用 `resumed` 报告复用了多少行；已经不在当前
 manifest 里的旧行会被丢弃。这个开关假定只读源没有变化，源变更后必须全量重算。
