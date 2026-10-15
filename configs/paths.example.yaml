@@ -60,6 +60,9 @@ runtime:
   # Reuse already-parsed rows from the features file instead of recomputing
   # them. Only safe while the read-only sources are unchanged.
   resume: false
+  # How often `validate` rewrites the features table while running. Without it a
+  # long run that dies leaves nothing behind, and `resume` has nothing to reuse.
+  flush_every: 200
 
 # Duplicate grouping. Exact grouping uses SHA-256 and costs nothing; near
 # grouping parses the candidate assets again, so it is the one stage worth

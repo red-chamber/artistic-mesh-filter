@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from mesh_filter.inspection import (
     safe_message,
 )
 from mesh_filter.manifest import read_csv, write_csv
+
+DEFAULT_FLUSH_EVERY = 200
 
 STATUS_FIELDS = [
     "asset_id",
@@ -71,6 +74,7 @@ def validate_manifest(
 
     runtime = config.values.get("runtime", {})
     continue_on_error = bool(runtime.get("continue_on_error", True))
+    flush_every = int(runtime.get("flush_every", DEFAULT_FLUSH_EVERY))
     reusable = _reusable_rows(
         output,
         bool(runtime.get("resume", False)),
@@ -80,7 +84,7 @@ def validate_manifest(
     output_rows: list[dict[str, Any]] = []
     counts = {"total": len(rows), "parsed": 0, "failed": 0, "warnings": 0, "resumed": 0}
 
-    for record in rows:
+    for position, record in enumerate(rows, start=1):
         base = {
             "asset_id": record["asset_id"],
             "source_dataset": record["source_dataset"],
@@ -94,39 +98,50 @@ def validate_manifest(
             counts["parsed"] += 1
             counts["resumed"] += 1
             counts["warnings"] += int(previous.get("validity_status") == "valid_with_warnings")
-            continue
+        else:
+            mesh_path = config.source_root(record["source_dataset"]) / record["raw_relpath"]
+            try:
+                features = evaluate_asset(mesh_path, options)
+                warned = has_warning(features)
+                validity = "valid_with_warnings" if warned else "valid"
+                output_rows.append(
+                    {
+                        **base,
+                        "parse_status": "parsed",
+                        "validity_status": validity,
+                        "error_code": "",
+                        "error_message": "",
+                        **features,
+                    }
+                )
+                counts["parsed"] += 1
+                counts["warnings"] += int(warned)
+            except Exception as error:  # per-asset containment is intentional
+                output_rows.append(
+                    {
+                        **base,
+                        "parse_status": "failed",
+                        "validity_status": "invalid",
+                        "error_code": type(error).__name__,
+                        "error_message": safe_message(error),
+                        "part_count": "",
+                    }
+                )
+                counts["failed"] += 1
+                if not continue_on_error:
+                    raise
 
-        mesh_path = config.source_root(record["source_dataset"]) / record["raw_relpath"]
-        try:
-            features = evaluate_asset(mesh_path, options)
-            warned = has_warning(features)
-            validity = "valid_with_warnings" if warned else "valid"
-            output_rows.append(
-                {
-                    **base,
-                    "parse_status": "parsed",
-                    "validity_status": validity,
-                    "error_code": "",
-                    "error_message": "",
-                    **features,
-                }
+        if flush_every > 0 and position % flush_every == 0:
+            # Rewriting a prefix of the table is cheap next to parsing, and it is
+            # what makes an interrupted run resumable: `runtime.resume` can only
+            # reuse rows that reached disk.
+            write_csv(output, output_rows, STATUS_FIELDS)
+            print(
+                f"validated {position}/{len(rows)} "
+                f"(parsed={counts['parsed']} failed={counts['failed']})",
+                file=sys.stderr,
+                flush=True,
             )
-            counts["parsed"] += 1
-            counts["warnings"] += int(warned)
-        except Exception as error:  # per-asset containment is intentional
-            output_rows.append(
-                {
-                    **base,
-                    "parse_status": "failed",
-                    "validity_status": "invalid",
-                    "error_code": type(error).__name__,
-                    "error_message": safe_message(error),
-                    "part_count": "",
-                }
-            )
-            counts["failed"] += 1
-            if not continue_on_error:
-                raise
 
     write_csv(output, output_rows, STATUS_FIELDS)
     return output, counts
