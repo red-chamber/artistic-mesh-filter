@@ -10,6 +10,7 @@ from mesh_filter.deduplicate import mark_duplicates
 from mesh_filter.evaluation.blind_audit import build_audit_gold
 from mesh_filter.evaluation.matched_test import build_matched_test
 from mesh_filter.evaluation.review_kit import prepare_review
+from mesh_filter.evaluation.screening_kit import build_screening_review
 from mesh_filter.manifest import build_manifest
 from mesh_filter.models.count_baseline import train_count_baseline
 from mesh_filter.probe import probe_sources
@@ -95,6 +96,12 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("configs/screening/artistic_v1.yaml"),
     )
+
+    screen_review = add_config(
+        "build-screening-review",
+        "Sample the screening verdicts into a correction sheet with anonymised meshes",
+    )
+    screen_review.add_argument("--per-level", type=int, default=15)
     return parser
 
 
@@ -216,6 +223,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "prepare-review":
         output, report = prepare_review(config, args.limit)
         print(json.dumps(report, ensure_ascii=False))
+    elif args.command == "build-screening-review":
+        output, report = build_screening_review(config, args.per_level)
+        print(
+            json.dumps(
+                {
+                    "output": str(output),
+                    "key_output": report["key_output"],
+                    "review_dir": report["review_dir"],
+                    "levels": report["levels"],
+                    "available": report["available"],
+                    "sampled": report["sampled"],
+                    "written": report["kit"]["written"],
+                    "mesh_failures": report["kit"]["failure_count"],
+                },
+                ensure_ascii=False,
+            )
+        )
     elif args.command == "screen":
         output, report = run_screening(config, config.resolve(args.rules))
         print(

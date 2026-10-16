@@ -53,7 +53,7 @@ PROTOCOL = """# 盲审操作说明
    | `uncertain` | 仅凭当前视图不能稳定判断 |
    | `invalid` | 无法可靠显示或几何不可用，不参与好坏判断 |
 
-5. 不要打开审计对照表（`audit_gold_key.csv`）。它一旦被看过，这份评审就不再是独立证据。
+5. 不要打开对照表（`*_key.csv`）。它一旦被看过，这份评审就不再是独立证据。
 6. 校准：先看前三个，把标准定下来，再开始正式评审；中途不要改判据。
 
 ## 判据（课题组给出，按这个顺序看）
@@ -112,18 +112,26 @@ def _clear_stale_files(output_dir: Path) -> list[str]:
 def prepare_review(
     config: ProjectConfig,
     limit: int | None = None,
+    sheet_path: Path | None = None,
+    output_dir: Path | None = None,
 ) -> tuple[Path, dict[str, Any]]:
-    sheet_path = config.output_path("audit_gold")
+    """Write the anonymised meshes for one sheet.
+
+    `sheet_path` and `output_dir` default to the audit sheet and the configured
+    review directory; other callers (the screening calibration kit) pass their
+    own so the two kits stay separate.
+    """
+    sheet_path = Path(sheet_path) if sheet_path is not None else config.output_path("audit_gold")
     if not sheet_path.exists():
         raise FileNotFoundError(
-            f"Audit sheet not found: {sheet_path}. Run `build-audit-gold` first."
+            f"Review sheet not found: {sheet_path}. Run `build-audit-gold` first."
         )
     sheet = read_csv(sheet_path)
     if limit is not None:
         sheet = sheet[: int(limit)]
 
     manifest = {row["asset_id"]: row for row in read_csv(config.output_path("manifest"))}
-    output_dir = config.output_path("review_dir")
+    output_dir = Path(output_dir) if output_dir is not None else config.output_path("review_dir")
     output_dir.mkdir(parents=True, exist_ok=True)
     stale = _clear_stale_files(output_dir)
 
