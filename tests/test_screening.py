@@ -83,11 +83,17 @@ def test_regular_faces_plus_redundant_vertices_are_flagged(rules) -> None:
 
 
 def test_face_count_bounds_follow_the_groups_papers(rules) -> None:
-    for count in ("499", "20001"):
+    """上界 20k 来自论文；下界经首轮校准从 500 降到 50。
+
+    The 500-face floor is a training-data rule in LATO and MeshRipple, not a
+    quality rule: the first calibration round found it killing good meshes (a
+    12-triangle cuboid, a 196-face fan). 50 keeps only the scrap guard.
+    """
+    for count in ("49", "20001"):
         verdicts = evaluate_rules(_row(face_count=count), rules)
         assert verdicts["face_count_range"] == "fail"
         assert overall_verdict(verdicts, rules) == "rejected"
-    for count in ("500", "20000"):
+    for count in ("50", "500", "20000"):
         assert evaluate_rules(_row(face_count=count), rules)["face_count_range"] == "pass"
 
 
@@ -106,10 +112,21 @@ def test_validity_defects_reject(rules) -> None:
         {"parse_status": "failed"},
         {"zero_area_face_ratio": "0.5"},
         {"duplicate_face_count": "3"},
-        {"nonmanifold_edge_count": "2"},
     ):
         verdicts = evaluate_rules(_row(**overrides), rules)
         assert overall_verdict(verdicts, rules) == "rejected", overrides
+
+
+def test_nonmanifold_edges_are_a_flag_not_a_gate(rules) -> None:
+    """First calibration round: this defect does not drive the human's judgement.
+
+    Four sampled meshes tripped it — all on a single edge — and the human
+    accepted two of them and rejected the other two, so it cannot gate.
+    """
+    verdicts = evaluate_rules(_row(nonmanifold_edge_count="1"), rules)
+
+    assert verdicts["nonmanifold_edges"] == "fail"
+    assert overall_verdict(verdicts, rules) == "flagged"
 
 
 def test_a_blank_flag_column_is_unknown_not_failed(rules) -> None:
@@ -124,7 +141,7 @@ def test_a_blank_flag_column_is_unknown_not_failed(rules) -> None:
 
 def test_a_reject_outranks_any_number_of_flags(rules) -> None:
     row = _row(
-        face_count="100",
+        face_count="40",
         area_coefficient_of_variation="0.01",
         equilateral_median="0.99",
         qem_redundancy_median="0.0",
@@ -165,7 +182,7 @@ def test_screen_writes_the_table_and_counts_by_source(make_config) -> None:
         "asset_id": "a2",
         "source_dataset": "objaverse",
         "label": "0",
-        **_row(face_count="100", curvature_density_correlation=""),
+        **_row(face_count="40", curvature_density_correlation=""),
     }
     write_csv(config.output_path("features"), [clean, broken], fieldnames=list(clean))
 

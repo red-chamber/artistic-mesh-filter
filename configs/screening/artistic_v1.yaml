@@ -40,17 +40,22 @@ rules:
       - {column: duplicate_face_count, op: max, value: 0}
 
   - name: nonmanifold_edges
-    severity: reject
-    provenance: "结构有效性：不允许非流形边（这条最严，若校准中发现误杀可改 flag）"
+    severity: flag
+    provenance: >-
+      结构有效性：非流形边是缺陷，但首轮校准（2026-10-16）显示它不驱动人的判断——4 个触发
+      样本里 2 个被判 accept、2 个同意 reject，且都只有 1 条非流形边。因此从硬门槛降为 flag。
     conditions:
       - {column: nonmanifold_edge_count, op: max, value: 0}
 
   # ---- 第一条判据：面数与顶点数（课题组论文）----
   - name: face_count_range
     severity: reject
-    provenance: "第一条判据：LATO 与 MeshRipple 都丢弃面数 >20k 或 <500 的网格"
+    provenance: >-
+      第一条判据：LATO 与 MeshRipple 都丢弃面数 >20k 或 <500 的网格。首轮校准发现 <500 是
+      训练数据策展规则而不是质量规则：4 个触发样本里 3 个被判 accept（196 面的风扇、12 面的
+      长方体、472 面的吊牌）。下限降到 50（只挡碎屑），与论文的分歧记在 OPEN_QUESTIONS。
     conditions:
-      - {column: face_count, op: min, value: 500}
+      - {column: face_count, op: min, value: 50}
       - {column: face_count, op: max, value: 20000}
 
   - name: narrow_faces
