@@ -76,8 +76,10 @@ rules:
   - name: redundant_vertices
     severity: flag
     provenance: >-
-      判据二（冗余面）：顶点塌缩到邻居质心几乎不丢形状（QEM 低）＝ 顶点冗余。
-      该列过半为 0，阈值 0.001 待校准。
+      判据二（冗余面）：顶点塌缩到邻居质心几乎不丢形状（QEM 低）＝ 顶点冗余。这是目前
+      最弱的一条 flag：该列过半为 0、在语料上约六成触发；第二轮 23 次触发 20 次被认可，
+      但作为唯一触发规则时只有 3/6——三个误报都是 <500 面的干净小模型。保留但不再单独
+      解读，下一轮若继续误报就删掉它（判据二已由 redundant_face_share 承担）。
     conditions:
       - {column: qem_redundancy_median, op: min, value: 0.001}
 
@@ -95,17 +97,18 @@ rules:
     severity: reject
     provenance: >-
       判据二的核心度量：不用改变形状就能删掉的面占比 > 15% 即拒（口径按 CGAL 的
-      remesh_planar_patches，见 docs/RELATED_WORK.md）。校准于 2026-10-16 的 45 个样本：
-      判 accept 的最高 0.075；被判 reject 的最强三例是 0.30 / 0.31 / 0.55。>0.15 会命中
-      7 个 reject 里的 4 个，同时在一个"同意 accept"的样本（0.162）上误杀。
+      remesh_planar_patches，见 docs/RELATED_WORK.md）。第二轮校准（按面数配平）里
+      触发 11 次全部被认可，含 0.155 / 0.159 / 0.173 / 0.179 这些贴边样本。已知近失：
+      A0036（0.139，人判 reject）——但它与 A0022（0.145，人判 flag 合适）互相矛盾，
+      阈值维持 0.15。
     conditions:
       - {column: redundant_face_share, op: max, value: 0.15}
 
   - name: redundant_faces_elevated
     severity: flag
     provenance: >-
-      同一度量的可疑带：>5% 就记录。校准样本里判 accept 的最高 0.075，所以这条会带上
-      少量"有意为之"的样本——只记录、不拦截，等下轮校准再定。
+      同一度量的可疑带：>5% 就记录。第二轮触发 17 次、16 次被认可；唯一的改判是
+      A0036（0.139，人判 reject），已记在上面。
     conditions:
       - {column: redundant_face_share, op: max, value: 0.05}
 
