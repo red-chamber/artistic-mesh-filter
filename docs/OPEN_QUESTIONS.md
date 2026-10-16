@@ -32,7 +32,10 @@
 - 近重复检测只覆盖"顶点数、面数、连通分量完全相同"的重导出副本（旋转、镜像、统一缩放、
   平移、顶点重排、换格式都算）。同一形状被重新细分、简化或合并顶点后会改变计数，落进
   不同桶，检测不到；
-- 高级 Artistic 特征只有定义，没有实现，配置开关全为 `false`；
+- 高级 Artistic 特征已实现（`src/mesh_filter/features/artistic.py`），配置开关全部打开。
+  合成对照集（`tests/test_feature_contrast.py`）验证了各列响应什么性质，也测出两条硬边界
+  （等边度列看不见四边形重网格；曲率-密度相关看不见折痕、且均匀参数化下有系统性负偏），
+  结论表在 `docs/FEATURE_DEFINITIONS.md`；真实数据上的判别方向仍待人工标注确认；
 - 划分产出 `train/val/test/all`，另外 `build-matched-test` 与 `build-audit-gold` 会生成
   `matched_test.csv`、`audit_gold.csv` 和它的对照表，`prepare-review` 再把它变成匿名化的
   3D 查看目录。第一轮盲审不需要渲染（判据是拓扑，直接看 3D 更准，见
