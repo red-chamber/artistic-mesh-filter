@@ -16,6 +16,8 @@ status: "draft"
 # severity 的取值：
 #   reject —— 硬门槛，不通过即出局；
 #   flag   —— 只记录、参与排序，不拦截。阈值还没校准，拦截等于把猜测装成筛选器。
+# summary 是给终端展示的一句话理由（`filter` 输入单个模型时打印）；provenance 是完整
+# 出处与校准记录，只出现在本文件与报告里。
 # 阈值初值取自 4567 个资产的分布（见 docs/OPEN_QUESTIONS.md 与 docs/RELATED_WORK.md）；
 # 校准办法：脚本排序后人工盲判两端各 20 个，再回来改这里的数字。
 
@@ -23,24 +25,28 @@ rules:
   # ---- 结构有效性（学术界通用）----
   - name: parsed
     severity: reject
+    summary: "解析失败（不可读或几何损坏），直接出局"
     provenance: "结构有效性：解析失败（不可读、几何损坏）直接出局"
     conditions:
       - {column: parse_status, op: equals, value: "parsed"}
 
   - name: degenerate_faces
     severity: reject
+    summary: "退化面（面积近零）占比超过 1%"
     provenance: "结构有效性：退化面（面积 ≤ 中位面面积×1e-6）占比不得超过 1%"
     conditions:
       - {column: zero_area_face_ratio, op: max, value: 0.01}
 
   - name: duplicate_faces
     severity: reject
+    summary: "不允许重复三角面"
     provenance: "结构有效性：不允许重复三角面"
     conditions:
       - {column: duplicate_face_count, op: max, value: 0}
 
   - name: nonmanifold_edges
     severity: flag
+    summary: "存在非流形边（记录观察，不拦截）"
     provenance: >-
       结构有效性：非流形边是缺陷，但首轮校准（2026-10-16）显示它不驱动人的判断——4 个触发
       样本里 2 个被判 accept、2 个同意 reject，且都只有 1 条非流形边。因此从硬门槛降为 flag。
@@ -50,6 +56,7 @@ rules:
   # ---- 第一条判据：面数与顶点数（课题组论文）----
   - name: face_count_range
     severity: reject
+    summary: "面数超出 [4, 20000] 区间（上界来自 LATO 与 MeshRipple）"
     provenance: >-
       第一条判据：上界 20k 来自 LATO 与 MeshRipple。下界从论文的 500 一路降到 4：两轮
       校准都证明 500 是训练数据策展规则而非质量规则（12 面的长方体、196 面的风扇、472
@@ -61,6 +68,7 @@ rules:
 
   - name: narrow_faces
     severity: reject
+    summary: "最小内角 <5° 的窄面占比超过 20%"
     provenance: >-
       MeshRipple 附录 B.1：最小内角 <5° 的面占比 >20% 即丢弃。第三轮出现首个反例：
       A0026（0.214 刚过线，人判 accept "看起来并非冗余"）。单例不动论文口径，继续观察；
@@ -72,6 +80,7 @@ rules:
   - name: homogeneous_faces
     severity: flag
     match: any
+    summary: "面大小过于同质，且网格足够大（可能是平均铺面）"
     provenance: >-
       判据二（冗余面）：面大小同质（面积变异系数低）＝ 平均地铺面，而不是把面花在需要的地方。
       用 any 语义加一条小网格豁免：最小化的原始体（如 12 面的立方体）面大小天然一致，那里
@@ -83,6 +92,7 @@ rules:
 
   - name: redundant_vertices
     severity: flag
+    summary: "顶点冗余：塌缩顶点几乎不丢形状"
     provenance: >-
       判据二（冗余面）：顶点塌缩到邻居质心几乎不丢形状（QEM 低）＝ 顶点冗余。第二轮的
       观察名单（"下一轮若继续误报就删掉"）到第三轮撤销：21 次触发仅 1 次被改判 accept；
@@ -94,6 +104,7 @@ rules:
   - name: uniform_remesh_signature
     severity: flag
     match: any
+    summary: "等边度高且顶点冗余（为规则形状堆面的组合签名）"
     provenance: >-
       判据二的组合签名：等边度高 **且** 顶点冗余——"为了形状规则而堆面"的典型。
       用 any 语义表达"不同时满足两项才算通过"；等边度本身不是拒绝理由。
@@ -103,6 +114,7 @@ rules:
 
   - name: redundant_faces
     severity: reject
+    summary: "无需改变形状就能删掉的面占比超过 15%"
     provenance: >-
       判据二的核心度量：不用改变形状就能删掉的面占比 > 15% 即拒（口径按 CGAL 的
       remesh_planar_patches，见 docs/RELATED_WORK.md；坐标重合的顶点先焊接——语料里
@@ -115,6 +127,7 @@ rules:
 
   - name: redundant_faces_elevated
     severity: flag
+    summary: "可删面占比超过 5%（可疑带，仅记录）"
     provenance: >-
       同一度量的可疑带：>5% 就记录。两轮合计 27 次触发、26 次被认可（改判一个在本轮
       reject 档、一个在 accept 档）。它兜住了大部分"存在可以被合并的面"的改判样本，
@@ -126,6 +139,7 @@ rules:
   # ---- 第三条判据：顶点分布整齐有规律（按学长的话）----
   - name: degree_concentration
     severity: flag
+    summary: "顶点度数不集中（排布缺少规律）"
     provenance: >-
       判据三：顶点度数集中（众数占比）。阈值 0.35 待校准——合成对照显示均匀细分球的度数
       同样高度集中（tests/test_feature_contrast.py），不能单独当"手工程度"用。
@@ -134,6 +148,7 @@ rules:
 
   - name: density_follows_curvature
     severity: flag
+    summary: "密度没有跟随曲率（平坦处不稀疏、转折处不密集）"
     provenance: >-
       判据三：平坦处稀疏、转折处密集（曲率-密度相关为正）。测不出来（空值）记 unknown，
       不算失败；该列的两条边界见 docs/FEATURE_DEFINITIONS.md。

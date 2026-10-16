@@ -110,14 +110,17 @@ code --install-extension logicossoftware.logicos-3d-viewer
 
 这些扩展只用于人工查看，不参与流水线，也不改变仓库里的模型文件。
 
-## 只筛一个目录（独立使用）
+## 筛一个目录或单个模型（独立使用）
 
-不需要 manifest、划分或特征表——给一个网格目录就能拿到结果：
+不需要 manifest、划分或特征表——给一个网格目录或一个模型文件就能拿到结果：
 
 ```bash
 python -m mesh_filter filter --input <网格目录> --output results.csv
+python -m mesh_filter filter --input vase.obj --output vase.csv   # 单个模型
 ```
 
+- **输入是单个模型文件时，判定与逐条原因直接打印在终端**（每条原因取自规则文件的
+  出处文本），不用打开 CSV；输入目录时逐行写入 CSV、终端给汇总；
 - 递归扫描（默认 `.obj .ply .glb .gltf .stl .off`，可用 `--extensions` 改）；
 - 每个模型只计算规则真正读取的特征（不是整套特征集），按
   [`configs/screening/artistic_v1.yaml`](configs/screening/artistic_v1.yaml) 出判定：

@@ -114,6 +114,7 @@ class Rule:
     provenance: str
     match: str
     conditions: tuple[Condition, ...]
+    summary: str = ""
 
 
 def load_rules(path: str | Path) -> tuple[list[Rule], list[dict[str, str]]]:
@@ -154,6 +155,7 @@ def load_rules(path: str | Path) -> tuple[list[Rule], list[dict[str, str]]]:
                 provenance=str(entry.get("provenance", "")),
                 match=str(match),
                 conditions=tuple(conditions),
+                summary=str(entry.get("summary", "")),
             )
         )
     unapplied = [dict(entry) for entry in values.get("unapplied", [])]
@@ -338,6 +340,68 @@ def _collect_mesh_files(input_path: Path, extensions: Sequence[str]) -> tuple[li
     return mesh_files, skipped
 
 
+_VERDICT_GLOSS = {"clean": "通过", "flagged": "有可疑项，建议人工复核", "rejected": "不合格"}
+
+
+def _single_asset_summary(
+    name: str,
+    row: dict[str, Any] | None,
+    failures: list[dict[str, str]],
+    rules: list[Rule],
+) -> str:
+    """The one-model case, for a human reading the terminal.
+
+    A directory run writes a table; a single-model run should answer the
+    question directly — what the verdict is, which gates failed, and why each
+    of them exists (the rule file's own provenance text).
+    """
+    lines = [f"模型: {name}"]
+    if row is None:
+        error = failures[0]["error"] if failures else "未知错误"
+        lines.append("判定: 无法解析（不作为质量判断）")
+        lines.append(f"原因: {error}")
+        return "\n".join(lines)
+
+    verdict = str(row["verdict"])
+    lines.append(f"判定: {verdict}（{_VERDICT_GLOSS.get(verdict, verdict)}）")
+    severity = {rule.name: rule.severity for rule in rules}
+
+    def reason(entry: str) -> str:
+        rule = next((rule for rule in rules if rule.name == entry), None)
+        if rule is None:
+            return ""
+        text = rule.summary or " ".join(rule.provenance.split()).split("。")[0]
+        return " ".join(text.split())
+
+    failed = [entry for entry in str(row.get("failed_rules", "")).split(";") if entry]
+    rejects = [entry for entry in failed if severity.get(entry) == "reject"]
+    flags = [entry for entry in failed if severity.get(entry) == "flag"]
+    if rejects:
+        lines.append("硬门槛未过:")
+        lines.extend(f"  - {entry}: {reason(entry)}" for entry in rejects)
+    if flags:
+        lines.append("可疑项（记录、不拦截，建议人工复核）:")
+        lines.extend(f"  - {entry}: {reason(entry)}" for entry in flags)
+    unknown = [entry for entry in str(row.get("unknown_rules", "")).split(";") if entry]
+    if unknown:
+        lines.append("无法测量: " + "; ".join(unknown))
+    if not failed and not unknown:
+        lines.append("全部规则通过")
+    numbers = []
+    if row.get("face_count") not in (None, ""):
+        numbers.append(f"面数={row['face_count']}")
+    if row.get("vertex_count") not in (None, ""):
+        numbers.append(f"顶点数={row['vertex_count']}")
+    share = row.get("redundant_face_share")
+    if share not in (None, ""):
+        numbers.append(f"冗余面占比={float(share):.3f}")
+    if numbers:
+        lines.append("关键数值: " + "  ".join(numbers))
+    flag_total = sum(1 for rule in rules if rule.severity == "flag")
+    lines.append(f"附带检查通过: {row.get('flags_passed', '')}/{flag_total}")
+    return "\n".join(lines)
+
+
 def screen_directory(
     input_path: str | Path,
     output_path: str | Path,
@@ -420,6 +484,9 @@ def screen_directory(
             print(f"screened {position}/{len(mesh_files)}", file=sys.stderr)
 
     write_csv(output_path, rows, DIRECTORY_FIELDS)
+    if input_path.is_file():
+        name = mesh_files[0].name if mesh_files else input_path.name
+        print(_single_asset_summary(name, rows[0] if rows else None, failures, rules))
     report: dict[str, Any] = {
         "output": str(output_path),
         "input": str(input_path),

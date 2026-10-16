@@ -61,6 +61,42 @@ def test_filter_refuses_a_missing_input(tmp_path) -> None:
         screen_directory(tmp_path / "nope", tmp_path / "out.csv", RULES_PATH)
 
 
+def test_filter_single_file_prints_its_verdict_and_reasons(tmp_path, capsys) -> None:
+    """One file in: the answer goes to the terminal, not just into a CSV."""
+    _write_obj(tmp_path / "plate.obj", *grid_from_axes(np.arange(3.0), np.arange(3.0)))
+    _write_obj(tmp_path / "cube.obj", *box(1.0))
+
+    _, report = screen_directory(
+        tmp_path / "plate.obj", tmp_path.parent / "one.csv", RULES_PATH
+    )
+    verdict = capsys.readouterr().out
+    assert "rejected（不合格）" in verdict
+    assert "redundant_faces" in verdict
+    assert "冗余面占比" in verdict
+    assert report["assets"] == 1
+
+    _, report = screen_directory(
+        tmp_path / "cube.obj", tmp_path.parent / "two.csv", RULES_PATH
+    )
+    clean = capsys.readouterr().out
+    assert "clean（通过）" in clean
+    # A cube has no measurable curvature correlation; that is "not measurable",
+    # shown as such, not laundered into a failed check.
+    assert "无法测量: density_follows_curvature" in clean
+
+
+def test_filter_single_unparseable_file_says_so(tmp_path, capsys) -> None:
+    (tmp_path / "broken.obj").write_text("not an obj\n", encoding="ascii")
+
+    _, report = screen_directory(
+        tmp_path / "broken.obj", tmp_path.parent / "out.csv", RULES_PATH
+    )
+
+    output = capsys.readouterr().out
+    assert "无法解析" in output
+    assert report["failures"] == 1
+
+
 def test_filter_only_computes_the_columns_the_rules_read() -> None:
     rules, _ = load_rules(RULES_PATH)
 
