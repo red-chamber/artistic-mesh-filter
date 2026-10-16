@@ -42,6 +42,17 @@ EdgeRunner（arXiv 2409.18114）延续同一套语言：compact、topological co
 **这条线里没有一篇用三角形形状或顶点分布当判据**；评测一律是 Chamfer / Hausdorff / 法向一致性
 加面数。
 
+与本项目判据二（冗余的面）直接相关的两条：
+
+- **CGAL 的 `remesh_planar_patches`**（`doc.cgal.org/latest/PMP_Remeshing/`）：把边连通的
+  共面面聚成 patch（相邻面法向夹角在一个容差余弦内），把 patch 边界上共线的边串成线段，
+  线段端点与多面交汇点是 corner，然后用**只用 corner 顶点**的剖分当作该 patch 的最小
+  三角形数。本项目的 `redundant_face_share` 就是这个最小数与实际面数之比；容差（3°）
+  同样出自这份文档的口径——"共面"与"共线"共用同一个余弦。
+- **Klein, Liebich & Straßer 1996，"Mesh Reduction with Error Control"**：误差受控的顶点
+  删除——每个顶点带一个"删掉它会产生多大 Hausdorff 距离"的 potential error，按此排序逐个
+  删除；论文明确指出平面区域会被最先削减。这是"冗余 = 可在误差内删除"这一表述的经典来源。
+
 ## 3. 经典网格质量文献（方向相反，必须知道）
 
 数值与几何处理界的 "mesh quality" 有标准定义与指标。Sorgente et al.（CGF 2023）的综述把目标

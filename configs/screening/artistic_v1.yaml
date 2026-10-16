@@ -91,6 +91,24 @@ rules:
       - {column: equilateral_median, op: max, value: 0.9}
       - {column: qem_redundancy_median, op: min, value: 0.001}
 
+  - name: redundant_faces
+    severity: reject
+    provenance: >-
+      判据二的核心度量：不用改变形状就能删掉的面占比 > 15% 即拒（口径按 CGAL 的
+      remesh_planar_patches，见 docs/RELATED_WORK.md）。校准于 2026-10-16 的 45 个样本：
+      判 accept 的最高 0.075；被判 reject 的最强三例是 0.30 / 0.31 / 0.55。>0.15 会命中
+      7 个 reject 里的 4 个，同时在一个"同意 accept"的样本（0.162）上误杀。
+    conditions:
+      - {column: redundant_face_share, op: max, value: 0.15}
+
+  - name: redundant_faces_elevated
+    severity: flag
+    provenance: >-
+      同一度量的可疑带：>5% 就记录。校准样本里判 accept 的最高 0.075，所以这条会带上
+      少量"有意为之"的样本——只记录、不拦截，等下轮校准再定。
+    conditions:
+      - {column: redundant_face_share, op: max, value: 0.05}
+
   # ---- 第三条判据：顶点分布整齐有规律（按学长的话）----
   - name: degree_concentration
     severity: flag

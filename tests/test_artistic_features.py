@@ -128,6 +128,54 @@ def test_tiny_mesh_reports_no_measurable_curvature_correlation() -> None:
     assert features["qem_redundancy_median"] != ""
 
 
+def test_redundant_face_share_sees_faces_spent_on_flat_ground() -> None:
+    """A rectangle needs two triangles; a grid over the same rectangle is waste."""
+    coarse = compute_artistic_features(*_grid(size=3))
+    fine = compute_artistic_features(*_grid(size=8))
+
+    # Four corners need two triangles; the eight-triangle grid has six to spare.
+    assert coarse["redundant_face_share"] == pytest.approx(0.75)
+    assert fine["redundant_face_share"] > 0.9
+
+
+def test_a_curved_surface_has_no_redundant_faces() -> None:
+    """A sphere's faces are not redundant, however dense: none can be removed."""
+    shell = compute_artistic_features(*_octahedron())
+
+    assert shell["redundant_face_share"] == 0.0
+
+
+def test_a_coarse_box_spends_every_face_on_shape() -> None:
+    corners = np.array(
+        [
+            [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+            [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+        ],
+        dtype=float,
+    )
+    faces = np.array(
+        [
+            [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+            [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5],
+            [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7],
+        ],
+        dtype=np.int64,
+    )
+
+    features = compute_artistic_features(corners, faces)
+
+    assert features["redundant_face_share"] == 0.0
+
+
+def test_a_folded_sheet_is_still_wasteful_on_both_slopes() -> None:
+    """Cutting the sheet does not excuse a grid over each flat half."""
+    from mesh_filter.contrast import tent
+
+    flat = compute_artistic_features(*tent(15, 6, grading=1.0))
+
+    assert flat["redundant_face_share"] > 0.9
+
+
 def test_degree_statistics_are_concentrated_on_a_grid() -> None:
     vertices, faces = _grid(size=10)
 

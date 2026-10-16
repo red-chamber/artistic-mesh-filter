@@ -41,6 +41,7 @@ def _row(**overrides: str) -> dict[str, str]:
         "small_angle_ratio": "0.05",
         "area_coefficient_of_variation": "1.5",
         "qem_redundancy_median": "0.05",
+        "redundant_face_share": "0.0",
         "equilateral_median": "0.5",
         "vertex_degree_mode_share": "0.5",
         "curvature_density_correlation": "0.5",
@@ -80,6 +81,26 @@ def test_regular_faces_plus_redundant_vertices_are_flagged(rules) -> None:
     assert verdicts["uniform_remesh_signature"] == "fail"
     assert verdicts["redundant_vertices"] == "fail"
     assert overall_verdict(verdicts, rules) == "flagged"
+
+
+def test_redundant_faces_gate_on_the_calibrated_share(rules) -> None:
+    """判据二的核心度量：可以删掉的面成为拒绝理由，等边度不是。
+
+    Calibrated on the first 45-sample round: every mesh the human accepted sat
+    at or below 0.075 of removable faces; the strongest rejection read 0.55.
+    """
+    clean = evaluate_rules(_row(redundant_face_share="0.01"), rules)
+    assert clean["redundant_faces"] == "pass"
+    assert clean["redundant_faces_elevated"] == "pass"
+
+    elevated = evaluate_rules(_row(redundant_face_share="0.08"), rules)
+    assert elevated["redundant_faces"] == "pass"
+    assert elevated["redundant_faces_elevated"] == "fail"
+    assert overall_verdict(elevated, rules) == "flagged"
+
+    wasteful = evaluate_rules(_row(redundant_face_share="0.30"), rules)
+    assert wasteful["redundant_faces"] == "fail"
+    assert overall_verdict(wasteful, rules) == "rejected"
 
 
 def test_face_count_bounds_follow_the_groups_papers(rules) -> None:

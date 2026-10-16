@@ -39,6 +39,11 @@ EPSILON = 1.0e-12
 # Below this many vertices a Spearman coefficient is noise dressed up as a
 # number: eight vertices with two distinct values already give +-0.94.
 MIN_CORRELATION_VERTICES = 30
+# Coplanar faces merge into one patch when their normals differ by at most this
+# angle; the same tolerance decides whether two patch-border edges are collinear.
+# 3 degrees is the group's suggestion, and it is the single cosine that CGAL's
+# planar-patch remeshing applies to both tests.
+FLAT_ANGLE_TOLERANCE_DEG = 3.0
 
 COLUMNS = [
     "vertex_degree_mode_share",
@@ -48,6 +53,7 @@ COLUMNS = [
     "neighboring_direction_consistency_mean",
     "curvature_density_correlation",
     "qem_redundancy_median",
+    "redundant_face_share",
 ]
 
 
@@ -372,6 +378,141 @@ def _qem_redundancy_median(
     return float(np.median(error[in_use] / mean_length[in_use] ** 2))
 
 
+def _redundant_face_share(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    tolerance_deg: float = FLAT_ANGLE_TOLERANCE_DEG,
+) -> float:
+    """The fraction of faces that could be removed without changing the shape.
+
+    The recipe is CGAL's planar-patch remeshing (`remesh_planar_patches`):
+    group edge-adjacent faces into patches of (nearly) one plane, walk each
+    patch border in runs of (nearly) collinear edges, and keep a vertex only at
+    the ends of those runs and where three or more patches meet — the *corners*.
+    A patch with c corners needs c - 2 triangles no matter how finely it is
+    tessellated inside, so everything above that is faces spent on nothing: the
+    group's "a rectangle needs two triangles, this one used eight".
+
+    A dense but curved surface scores zero here. No two of its faces are
+    coplanar, so every patch is a single triangle and every patch is already
+    minimal — a sphere's faces are not redundant, however many there are. That
+    is what this column adds to the redundancy proxies: it separates "faces
+    spent where the shape needs them" from "faces spent on flat ground".
+
+    The minimum is exact for simply connected patches; a patch with a hole is
+    triangulated in c + 2h - 2 triangles rather than c - 2, so the share is
+    mildly optimistic on such patches. That direction is deliberate: this
+    column only ever argues *for* redundancy.
+    """
+    tolerance_cos = math.cos(math.radians(tolerance_deg))
+    triangles = vertices[faces]
+    cross = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
+    lengths = np.linalg.norm(cross, axis=1)
+    normals = np.divide(
+        cross, lengths[:, None], out=np.zeros_like(cross), where=lengths[:, None] > 0
+    )
+
+    pairs = np.concatenate((faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]))
+    edge_keys = np.sort(pairs, axis=1)
+    unique_edges, inverse, counts = np.unique(
+        edge_keys, axis=0, return_inverse=True, return_counts=True
+    )
+    face_ids = np.tile(np.arange(len(faces)), 3)
+    order = np.argsort(inverse, kind="stable")
+    sorted_faces = face_ids[order]
+    starts = np.searchsorted(inverse[order], np.arange(len(unique_edges)), side="left")
+
+    parent = np.arange(len(faces), dtype=np.int64)
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = int(parent[index])
+        return index
+
+    def union(left: int, right: int) -> None:
+        root_left, root_right = find(left), find(right)
+        if root_left != root_right:
+            parent[root_right] = root_left
+
+    finite = np.isfinite(normals).all(axis=1) & (lengths > 0)
+    coplanar = np.zeros(len(unique_edges), dtype=bool)
+    for edge in np.nonzero(counts == 2)[0]:
+        first = int(sorted_faces[starts[edge]])
+        second = int(sorted_faces[starts[edge] + 1])
+        if not (finite[first] and finite[second]):
+            continue
+        if float(normals[first] @ normals[second]) >= tolerance_cos:
+            coplanar[edge] = True
+            union(first, second)
+
+    _, patch_of_faces = np.unique([find(face) for face in range(len(faces))], return_inverse=True)
+    patch_count = int(patch_of_faces.max()) + 1
+
+    # Every border edge contributes its two endpoints as boundary points of the
+    # patch(es) it borders; a boundary edge borders one patch, a non-coplanar
+    # interior edge borders both of its faces' patches.
+    border_edges = np.nonzero((counts == 1) | ((counts == 2) & ~coplanar))[0]
+    if not len(border_edges):
+        return 0.0  # a closed surface with one patch cannot exist, but be safe
+    edge_a = unique_edges[border_edges, 0]
+    edge_b = unique_edges[border_edges, 1]
+    deltas = vertices[edge_b] - vertices[edge_a]
+    delta_lengths = np.linalg.norm(deltas, axis=1)[:, None]
+    units = np.divide(deltas, delta_lengths, out=np.zeros_like(deltas), where=delta_lengths > 0)
+
+    boundary = counts[border_edges] == 1
+    patch_arrays = []
+    vertex_arrays = []
+    direction_arrays = []
+    for mask, sides in ((boundary, 1), (~boundary, 2)):
+        if not mask.any():
+            continue
+        selected = np.nonzero(mask)[0]
+        edges = border_edges[selected]
+        faces_a = sorted_faces[starts[edges]]
+        patches_a = patch_of_faces[faces_a]
+        patch_arrays.append(patches_a)
+        vertex_arrays.append(edge_a[selected])
+        direction_arrays.append(units[selected])
+        patch_arrays.append(patches_a)
+        vertex_arrays.append(edge_b[selected])
+        direction_arrays.append(-units[selected])
+        if sides == 2:
+            patches_b = patch_of_faces[sorted_faces[starts[edges] + 1]]
+            patch_arrays.append(patches_b)
+            vertex_arrays.append(edge_a[selected])
+            direction_arrays.append(units[selected])
+            patch_arrays.append(patches_b)
+            vertex_arrays.append(edge_b[selected])
+            direction_arrays.append(-units[selected])
+
+    patch_labels = np.concatenate(patch_arrays)
+    vertex_labels = np.concatenate(vertex_arrays)
+    directions = np.concatenate(direction_arrays, axis=0)
+    order = np.lexsort((vertex_labels, patch_labels))
+    patch_labels, vertex_labels, directions = (
+        patch_labels[order],
+        vertex_labels[order],
+        directions[order],
+    )
+    keys = np.stack((patch_labels, vertex_labels), axis=1)
+    _, _, group_sizes = np.unique(keys, axis=0, return_inverse=True, return_counts=True)
+    group_starts = np.cumsum(group_sizes) - group_sizes
+    is_corner = np.ones(len(group_sizes), dtype=bool)
+    straight_groups = np.nonzero(group_sizes == 2)[0]
+    if len(straight_groups):
+        first = directions[group_starts[straight_groups]]
+        second = directions[group_starts[straight_groups] + 1]
+        dots = np.einsum("ij,ij->i", first, second)
+        is_corner[straight_groups] = dots > -tolerance_cos
+    group_patches = patch_labels[group_starts]
+    corners_per_patch = np.bincount(group_patches[is_corner], minlength=patch_count)
+    minimal_faces = np.maximum(corners_per_patch - 2, 1)
+    share = 1.0 - float(minimal_faces.sum()) / len(faces)
+    return float(min(max(share, 0.0), 1.0))
+
+
 def compute_artistic_features(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -422,6 +563,8 @@ def compute_artistic_features(
         features["qem_redundancy_median"] = _qem_redundancy_median(
             vertices, faces, unique_edges
         )
+    if "redundant_face_share" in wanted:
+        features["redundant_face_share"] = _redundant_face_share(vertices, faces)
     return {
         name: ("" if isinstance(value, float) and math.isnan(value) else value)
         for name, value in features.items()
