@@ -36,6 +36,11 @@
 - `build-audit-gold`：抽一份盲审样本，输出评审者表与对照表两个文件；
 - `prepare-review`：把盲审样本写成一批匿名化的最简 OBJ，交付评审者直接用 3D 查看器逐个
   打开判断（不需要渲染图片）；
+- `screen`：按 [`configs/screening/artistic_v1.yaml`](configs/screening/artistic_v1.yaml)
+  的规则给全量特征表出判定（`rejected` / `flagged` / `clean`）与逐规则报告，每条规则都带
+  出处、阈值已经过两轮人工校准；
+- `build-screening-review`：从三档判定按面数分层抽样，做成纠错表与匿名模型，供人工复核阈值；
+- `filter`：不需要任何项目配置——给一个网格目录，直接输出哪些模型可用（见下节）；
 - 环境快照：记录 Python、关键库版本、git commit 和加速器信息。
 
 暂未锁定的内容见 [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md)。
@@ -105,6 +110,25 @@ code --install-extension logicossoftware.logicos-3d-viewer
 
 这些扩展只用于人工查看，不参与流水线，也不改变仓库里的模型文件。
 
+## 只筛一个目录（独立使用）
+
+不需要 manifest、划分或特征表——给一个网格目录就能拿到结果：
+
+```bash
+python -m mesh_filter filter --input <网格目录> --output results.csv
+```
+
+- 递归扫描（默认 `.obj .ply .glb .gltf .stl .off`，可用 `--extensions` 改）；
+- 每个模型只计算规则真正读取的特征（不是整套特征集），按
+  [`configs/screening/artistic_v1.yaml`](configs/screening/artistic_v1.yaml) 出判定：
+  `clean`（通过）／`flagged`（有可疑项，建议人工过一眼）／`rejected`（不合格）；
+- 输出一行一个模型（`path, verdict, failed_rules` 加关键特征值），终端同时打印汇总；
+- 单个文件解析失败不会中断整批——记在汇总的 `failures` 里，坏文件不会被当成"不合格模型"。
+
+规则的来历与两轮人工校准结果见 [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md)；每条规则
+都带出处，改阈值只需要改规则文件，不用动代码。注意**输出不要写进输入目录**——下次扫描会把它
+再扫一遍（命令会给出警告）。
+
 ## 远端运行
 
 1. 复制 `configs/paths.example.yaml` 为 `configs/paths.remote.yaml`；
@@ -122,6 +146,7 @@ probe（只读，看真实格式）
 → validate
 → deduplicate
 → split
+→ screen（按判据出筛选判定）
 → train-count-baseline
 ```
 
@@ -138,6 +163,7 @@ probe（只读，看真实格式）
 - `matched_test.csv`：面数匹配的正负配对测试集，只用于诊断；
 - `audit_gold.csv` 与 `audit_gold_key.csv`：盲审表与对照表，后者不得交给评审者；
 - `review/A0001.obj` …：交给评审者的匿名化模型，配上同目录的 `REVIEW_PROTOCOL.md`；
+- `screening/screening_v1.csv` 与 `screening_report.json`：按判据的逐资产判定与逐规则报告；
 - `runs/<run-id>/`：实验配置、指标、预测和模型文件；
 - `reports/probe_report.json`、`reports/smoke_report.json`：探测与冒烟报告。
 

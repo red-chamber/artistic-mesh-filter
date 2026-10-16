@@ -33,11 +33,15 @@ report repeats them so the gap is visible rather than forgotten.
 from __future__ import annotations
 
 import json
+import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from mesh_filter.config import ConfigError, ProjectConfig, load_yaml
+from mesh_filter.features.artistic import COLUMNS as ARTISTIC_COLUMNS
+from mesh_filter.inspection import evaluate_asset, load_feature_options
 from mesh_filter.manifest import read_csv, write_csv
 
 OPS = ("equals", "min", "max")
@@ -54,6 +58,45 @@ TABLE_FIELDS = [
     "flags_unknown",
     "failed_rules",
     "unknown_rules",
+]
+
+# What `filter` accepts by default when scanning a folder on its own.
+DEFAULT_EXTENSIONS = (".obj", ".ply", ".glb", ".gltf", ".stl", ".off")
+
+DIRECTORY_FIELDS = [
+    "path",
+    "verdict",
+    "flags_passed",
+    "flags_failed",
+    "flags_unknown",
+    "failed_rules",
+    "unknown_rules",
+    "face_count",
+    "vertex_count",
+    "redundant_face_share",
+    "small_angle_ratio",
+    "area_coefficient_of_variation",
+    "qem_redundancy_median",
+    "curvature_density_correlation",
+    "vertex_degree_mode_share",
+    "zero_area_face_ratio",
+    "nonmanifold_edge_count",
+    "duplicate_face_count",
+]
+
+DIRECTORY_RECORD_FIELDS = [
+    name
+    for name in DIRECTORY_FIELDS
+    if name
+    not in {
+        "path",
+        "verdict",
+        "flags_passed",
+        "flags_failed",
+        "flags_unknown",
+        "failed_rules",
+        "unknown_rules",
+    }
 ]
 
 
@@ -266,3 +309,130 @@ def run_screening(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return table_path, report
+
+
+def required_artistic_columns(rules: list[Rule]) -> frozenset[str]:
+    """Which artistic columns the rule set actually reads.
+
+    `filter` computes only these, so screening a folder costs what the rules
+    need and not the whole feature suite.
+    """
+    wanted = {condition.column for rule in rules for condition in rule.conditions}
+    return frozenset(wanted & set(ARTISTIC_COLUMNS))
+
+
+def _collect_mesh_files(input_path: Path, extensions: Sequence[str]) -> tuple[list[Path], int]:
+    """Mesh files under the input, sorted; and how many files were skipped."""
+    wanted = {extension.lower() for extension in extensions}
+    if input_path.is_file():
+        return ([input_path], 0) if input_path.suffix.lower() in wanted else ([], 1)
+    mesh_files: list[Path] = []
+    skipped = 0
+    for path in sorted(input_path.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() in wanted:
+            mesh_files.append(path)
+        else:
+            skipped += 1
+    return mesh_files, skipped
+
+
+def screen_directory(
+    input_path: str | Path,
+    output_path: str | Path,
+    rules_path: str | Path,
+    extensions: Sequence[str] | None = None,
+    feature_config: str | Path | None = None,
+    limit: int | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    """Screen a folder of meshes on its own, without the project pipeline.
+
+    This is the deliverable form of the rules: point it at a directory, get a
+    CSV saying which meshes are good and why the others are not. It shares the
+    rule file and the feature code with the pipeline, so a threshold calibrated
+    on the corpus travels here unchanged; what it does not need is the manifest,
+    the splits, or the feature table.
+    """
+    rules, unapplied = load_rules(rules_path)
+    wanted = tuple(extensions) if extensions else DEFAULT_EXTENSIONS
+    input_path = Path(input_path).expanduser()
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input path not found: {input_path}")
+    mesh_files, skipped = _collect_mesh_files(input_path, wanted)
+    if limit is not None:
+        mesh_files = mesh_files[: int(limit)]
+    if not mesh_files:
+        raise ConfigError(
+            f"No mesh files with extensions {wanted} under {input_path}"
+        )
+
+    feature_path = Path(feature_config).expanduser() if feature_config else None
+    options = load_feature_options(feature_path if feature_path and feature_path.exists() else None)
+    artistic = required_artistic_columns(rules)
+    flag_names = [rule.name for rule in rules if rule.severity == "flag"]
+
+    output_path = Path(output_path).expanduser()
+    root = input_path.parent if input_path.is_file() else input_path
+    if output_path.resolve().is_relative_to(root.resolve()):
+        print(
+            f"warning: writing the output inside the input folder makes it get "
+            f"scanned on the next run: {output_path}",
+            file=sys.stderr,
+        )
+    rows: list[dict[str, Any]] = []
+    rule_failures = {rule.name: 0 for rule in rules}
+    verdicts = {"rejected": 0, "flagged": 0, "clean": 0}
+    failures: list[dict[str, str]] = []
+    started = time.perf_counter()
+    for position, path in enumerate(mesh_files, start=1):
+        relative = path.relative_to(root).as_posix()
+        try:
+            record = evaluate_asset(path, options, artistic)
+            # `validate` writes this column; a file that loaded is parsed.
+            record.setdefault("parse_status", "parsed")
+        except Exception as error:  # per-asset containment is intentional
+            failures.append({"path": relative, "error": " ".join(str(error).split())[:200]})
+            continue
+        rule_verdicts = evaluate_rules(record, rules)
+        verdict = overall_verdict(rule_verdicts, rules)
+        verdicts[verdict] += 1
+        for name, value in rule_verdicts.items():
+            if value == "fail":
+                rule_failures[name] += 1
+        row: dict[str, Any] = {
+            "path": relative,
+            "verdict": verdict,
+            "flags_passed": sum(1 for name in flag_names if rule_verdicts[name] == "pass"),
+            "flags_failed": sum(1 for name in flag_names if rule_verdicts[name] == "fail"),
+            "flags_unknown": sum(1 for name in flag_names if rule_verdicts[name] == "unknown"),
+            "failed_rules": ";".join(
+                name for name, value in rule_verdicts.items() if value == "fail"
+            ),
+            "unknown_rules": ";".join(
+                name for name, value in rule_verdicts.items() if value == "unknown"
+            ),
+        }
+        for name in DIRECTORY_RECORD_FIELDS:
+            row[name] = record.get(name, "")
+        rows.append(row)
+        if position % 100 == 0:
+            print(f"screened {position}/{len(mesh_files)}", file=sys.stderr)
+
+    write_csv(output_path, rows, DIRECTORY_FIELDS)
+    report: dict[str, Any] = {
+        "output": str(output_path),
+        "input": str(input_path),
+        "rules_config": str(Path(rules_path)),
+        "assets": len(rows),
+        "failures": len(failures),
+        "failure_examples": failures[:5],
+        "skipped_non_mesh_files": skipped,
+        "verdicts": verdicts,
+        "rule_failures": rule_failures,
+        "extensions": list(wanted),
+        "artistic_columns": sorted(artistic),
+        "unapplied": unapplied,
+        "seconds": round(time.perf_counter() - started, 1),
+    }
+    return output_path, report

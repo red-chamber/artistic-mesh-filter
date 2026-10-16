@@ -104,17 +104,17 @@ def test_redundant_faces_gate_on_the_calibrated_share(rules) -> None:
 
 
 def test_face_count_bounds_follow_the_groups_papers(rules) -> None:
-    """上界 20k 来自论文；下界经首轮校准从 500 降到 50。
+    """上界 20k 来自论文；下界只留"够算特征"的 4。
 
     The 500-face floor is a training-data rule in LATO and MeshRipple, not a
-    quality rule: the first calibration round found it killing good meshes (a
-    12-triangle cuboid, a 196-face fan). 50 keeps only the scrap guard.
+    quality rule: both calibration rounds found it killing good meshes (a
+    12-triangle cuboid, a 196-face fan, a 472-face tag).
     """
-    for count in ("49", "20001"):
+    for count in ("3", "20001"):
         verdicts = evaluate_rules(_row(face_count=count), rules)
         assert verdicts["face_count_range"] == "fail"
         assert overall_verdict(verdicts, rules) == "rejected"
-    for count in ("50", "500", "20000"):
+    for count in ("4", "12", "50", "20000"):
         assert evaluate_rules(_row(face_count=count), rules)["face_count_range"] == "pass"
 
 
@@ -162,7 +162,7 @@ def test_a_blank_flag_column_is_unknown_not_failed(rules) -> None:
 
 def test_a_reject_outranks_any_number_of_flags(rules) -> None:
     row = _row(
-        face_count="40",
+        zero_area_face_ratio="0.5",
         area_coefficient_of_variation="0.01",
         equilateral_median="0.99",
         qem_redundancy_median="0.0",
@@ -203,7 +203,7 @@ def test_screen_writes_the_table_and_counts_by_source(make_config) -> None:
         "asset_id": "a2",
         "source_dataset": "objaverse",
         "label": "0",
-        **_row(face_count="40", curvature_density_correlation=""),
+        **_row(face_count="3", curvature_density_correlation=""),
     }
     write_csv(config.output_path("features"), [clean, broken], fieldnames=list(clean))
 

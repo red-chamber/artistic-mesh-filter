@@ -14,7 +14,7 @@ from mesh_filter.evaluation.screening_kit import build_screening_review
 from mesh_filter.manifest import build_manifest
 from mesh_filter.models.count_baseline import train_count_baseline
 from mesh_filter.probe import probe_sources
-from mesh_filter.screening import run_screening
+from mesh_filter.screening import run_screening, screen_directory
 from mesh_filter.smoke import run_smoke_test
 from mesh_filter.split import create_splits
 from mesh_filter.validate import validate_manifest
@@ -102,11 +102,55 @@ def _parser() -> argparse.ArgumentParser:
         "Sample the screening verdicts into a correction sheet with anonymised meshes",
     )
     screen_review.add_argument("--per-level", type=int, default=15)
+
+    filt = subparsers.add_parser(
+        "filter",
+        help="Screen a folder of meshes on its own (no project config needed)",
+    )
+    filt.add_argument("--input", required=True, type=Path, help="Mesh file or directory")
+    filt.add_argument("--output", type=Path, default=Path("screening_results.csv"))
+    filt.add_argument(
+        "--rules",
+        type=Path,
+        default=Path("configs/screening/artistic_v1.yaml"),
+    )
+    filt.add_argument("--extensions", nargs="+", default=None)
+    filt.add_argument(
+        "--feature-config",
+        type=Path,
+        default=Path("configs/features/basic_v1.yaml"),
+    )
+    filt.add_argument("--limit", type=int, default=None, help="Only the first N meshes")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "filter":
+        output, report = screen_directory(
+            args.input,
+            args.output,
+            args.rules,
+            args.extensions,
+            args.feature_config,
+            args.limit,
+        )
+        print(
+            json.dumps(
+                {
+                    "output": str(output),
+                    "input": report["input"],
+                    "assets": report["assets"],
+                    "verdicts": report["verdicts"],
+                    "failures": report["failures"],
+                    "failure_examples": report["failure_examples"],
+                    "skipped_non_mesh_files": report["skipped_non_mesh_files"],
+                    "seconds": report["seconds"],
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
     config = load_project_config(args.config)
 
     if args.command == "build-manifest":

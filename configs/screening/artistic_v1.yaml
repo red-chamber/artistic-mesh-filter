@@ -51,11 +51,12 @@ rules:
   - name: face_count_range
     severity: reject
     provenance: >-
-      第一条判据：LATO 与 MeshRipple 都丢弃面数 >20k 或 <500 的网格。首轮校准发现 <500 是
-      训练数据策展规则而不是质量规则：4 个触发样本里 3 个被判 accept（196 面的风扇、12 面的
-      长方体、472 面的吊牌）。下限降到 50（只挡碎屑），与论文的分歧记在 OPEN_QUESTIONS。
+      第一条判据：上界 20k 来自 LATO 与 MeshRipple。下界从论文的 500 一路降到 4：两轮
+      校准都证明 500 是训练数据策展规则而非质量规则（12 面的长方体、196 面的风扇、472
+      面的吊牌都被人判 accept）。4 只是"够算特征"的下限，见
+      src/mesh_filter/features/artistic.py 的最小规模要求。
     conditions:
-      - {column: face_count, op: min, value: 50}
+      - {column: face_count, op: min, value: 4}
       - {column: face_count, op: max, value: 20000}
 
   - name: narrow_faces
@@ -67,11 +68,15 @@ rules:
   # ---- 第二条判据：为规则形状堆的冗余面（按学长原意）----
   - name: homogeneous_faces
     severity: flag
+    match: any
     provenance: >-
       判据二（冗余面）：面大小同质（面积变异系数低）＝ 平均地铺面，而不是把面花在需要的地方。
-      阈值 0.5 待校准（实测 p10≈0.73，即只对最同质的一小部分报警）。
+      用 any 语义加一条小网格豁免：最小化的原始体（如 12 面的立方体）面大小天然一致，那里
+      没有冗余可言——同质只有在网格大到铺得开时才可疑。这条负责冗余占比看不见的一类：
+      弯曲表面上均匀铺满的四边形（每个面各自成 patch，占比为 0，如第一轮的 A0029）。
     conditions:
       - {column: area_coefficient_of_variation, op: min, value: 0.5}
+      - {column: face_count, op: max, value: 500}
 
   - name: redundant_vertices
     severity: flag
