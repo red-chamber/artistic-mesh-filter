@@ -7,11 +7,14 @@ they disagree. That is a much cheaper pass than judging from scratch, and it is
 how the `flag` thresholds move: they stay recorded-not-gating until a human says
 where the boundary actually sits.
 
-The sample is stratified by source and by the rule that decided the verdict, so
-every rule gets looked at from both sides instead of the corpus average being
-reviewed once more. Anonymisation is the audit kit's: minimal OBJ, one
-timestamp, no source and no file names in the mesh directory. The key that maps
-anonymous names back to assets stays one directory up, outside the review
+The sample is stratified by source and by face-count bin, and every level draws
+the same spread of bins: the first round showed the human's corrections tracking
+face count (everything accepted sat below 4k faces, everything rejected above
+7k), so the second round has to balance that out to separate "many faces" from
+"wasteful faces". The rule that decided a verdict is still recorded in the key,
+but no longer steers the draw. Anonymisation is the audit kit's: minimal OBJ,
+one timestamp, no source and no file names in the mesh directory. The key that
+maps anonymous names back to assets stays one directory up, outside the review
 folder, and must not be opened.
 """
 
@@ -44,23 +47,8 @@ KEY_FIELDS = [
 VERDICT_TO_LABEL = {"clean": "accept", "flagged": "flag", "rejected": "reject"}
 LEVELS = ("accept", "flag", "reject")
 
-# Which rule decided the verdict, used to stratify the sample. First match wins,
-# so the order is the priority; an unlisted rule lands in "other" and is still
-# sampled, just without a stratum of its own.
-REJECT_PRIORITY = (
-    "narrow_faces",
-    "face_count_range",
-    "nonmanifold_edges",
-    "degenerate_faces",
-    "parsed",
-)
-FLAG_PRIORITY = (
-    "redundant_vertices",
-    "homogeneous_faces",
-    "uniform_remesh_signature",
-    "density_follows_curvature",
-    "degree_concentration",
-)
+# Face-count bins for stratification; the corpus spans 12 to 20k faces.
+FACE_BIN_EDGES = (0, 250, 500, 1000, 2000, 4000, 8000, 16000, 20001)
 
 NOTES = """# 筛选校准：怎么填这张表
 
@@ -79,16 +67,21 @@ NOTES = """# 筛选校准：怎么填这张表
    - 顶点分布整齐有规律；平坦处稀疏、转折处密集。
 5. 不要打开上一层的 `screening_review_key.csv`（对照表，含来源与资产 id）。看过它，
    这份校准就不再是独立证据。
-6. 本轮样本三个等级各 15 个，顺序已打乱；判据说明与观察顺序另见同目录的
-   `REVIEW_PROTOCOL.md`。
+6. 本轮样本三个等级各 15 个，**按面数分层抽取**（每一档在面数箱与来源上均匀铺开），
+   顺序已打乱；判据说明与观察顺序另见同目录的 `REVIEW_PROTOCOL.md`。
 """
 
 
-def _primary_reason(failed: list[str], priority: tuple[str, ...]) -> str:
-    for name in priority:
-        if name in failed:
-            return name
-    return "other"
+def _face_bin_label(face_count: str) -> str:
+    """Which face-count bin an asset falls in; a blank count lands in the first."""
+    try:
+        count = int(float(face_count))
+    except (TypeError, ValueError):
+        count = 0
+    for low, high in zip(FACE_BIN_EDGES, FACE_BIN_EDGES[1:], strict=True):
+        if low <= count < high:
+            return f"[{low},{high})"
+    return f"[{FACE_BIN_EDGES[-2]},{FACE_BIN_EDGES[-1]})"
 
 
 def plan_screening_review(
@@ -108,34 +101,29 @@ def plan_screening_review(
         level = VERDICT_TO_LABEL.get(row.get("verdict", ""))
         if level is None:
             continue
-        failed = [name for name in row.get("failed_rules", "").split(";") if name]
-        if level == "reject":
-            reason = _primary_reason(failed, REJECT_PRIORITY)
-        elif level == "flag":
-            reason = _primary_reason(failed, FLAG_PRIORITY)
-        else:
-            reason = "none"
-        strata.setdefault((level, row.get("source_dataset", "unknown"), reason), []).append(row)
+        face_bin = _face_bin_label(features.get(row["asset_id"], {}).get("face_count", ""))
+        strata.setdefault((level, row.get("source_dataset", "unknown"), face_bin), []).append(row)
 
     picked: list[dict[str, str]] = []
     strata_report: list[dict[str, Any]] = []
     for level in LEVELS:
         keys = sorted(key for key in strata if key[0] == level)
-        order = sorted(keys, key=lambda key: (-len(strata[key]), key))
-        quota = dict.fromkeys(order, 0)
-        remaining = per_level
-        while remaining > 0:
-            progressed = False
-            for key in order:
-                if remaining <= 0:
-                    break
-                if quota[key] < len(strata[key]):
-                    quota[key] += 1
-                    remaining -= 1
-                    progressed = True
-            if not progressed:
-                break
+        if not keys:
+            continue
+        # A base share per stratum, then the remainder handed out in a shuffled
+        # order. A plain round robin would hand the whole budget to the first
+        # strata whenever the budget is smaller than the number of cells — and
+        # cells sort by source name first, which quietly biases the draw.
+        quota = {key: min(per_level // len(keys), len(strata[key])) for key in keys}
+        remaining = per_level - sum(quota.values())
+        order = random.Random(f"{seed}:screen-kit:quota:{level}").sample(keys, len(keys))
         for key in order:
+            if remaining <= 0:
+                break
+            if quota[key] < len(strata[key]):
+                quota[key] += 1
+                remaining -= 1
+        for key in keys:
             items = sorted(strata[key], key=lambda row: row["asset_id"])
             chosen = random.Random(f"{seed}:screen-kit:{key[0]}:{key[1]}:{key[2]}").sample(
                 items, quota[key]
@@ -144,7 +132,7 @@ def plan_screening_review(
                 {
                     "level": key[0],
                     "source": key[1],
-                    "reason": key[2],
+                    "face_bin": key[2],
                     "available": len(items),
                     "sampled": quota[key],
                 }

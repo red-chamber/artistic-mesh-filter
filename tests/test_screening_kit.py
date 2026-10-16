@@ -1,4 +1,4 @@
-"""The calibration kit: sampling, the blank form, and determinism."""
+"""The calibration kit: stratified sampling, the blank form, determinism."""
 
 import pytest
 
@@ -35,24 +35,31 @@ def _row(asset_id: str, source: str, verdict: str, failed: str = "") -> dict[str
     }
 
 
-def _corpus() -> list[dict[str, str]]:
-    return [
-        _row("c1", "toys4k", "clean"),
-        _row("c2", "objaverse", "clean"),
-        _row("c3", "toys4k", "clean"),
-        _row("c4", "objaverse", "clean"),
-        _row("f1", "toys4k", "flagged", "redundant_vertices"),
-        _row("f2", "objaverse", "flagged", "redundant_vertices"),
-        _row("f3", "toys4k", "flagged", "degree_concentration"),
-        _row("f4", "objaverse", "flagged", "degree_concentration"),
-        _row("r1", "toys4k", "rejected", "narrow_faces"),
-        _row("r2", "objaverse", "rejected", "narrow_faces"),
-        _row("r3", "toys4k", "rejected", "face_count_range"),
-        _row("r4", "objaverse", "rejected", "face_count_range"),
+def _corpus() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Four assets per level, spread over four face-count bins and both sources."""
+    entries = [
+        ("c1", "toys4k", "clean", 100),
+        ("c2", "objaverse", "clean", 700),
+        ("c3", "toys4k", "clean", 3000),
+        ("c4", "objaverse", "clean", 9000),
+        ("f1", "toys4k", "flagged", 100),
+        ("f2", "objaverse", "flagged", 700),
+        ("f3", "toys4k", "flagged", 3000),
+        ("f4", "objaverse", "flagged", 9000),
+        ("r1", "toys4k", "rejected", 100),
+        ("r2", "objaverse", "rejected", 700),
+        ("r3", "toys4k", "rejected", 3000),
+        ("r4", "objaverse", "rejected", 9000),
     ]
+    screening = [_row(asset_id, source, verdict) for asset_id, source, verdict, _ in entries]
+    features = [
+        {"asset_id": asset_id, "face_count": str(faces), "vertex_count": "600"}
+        for asset_id, _, _, faces in entries
+    ]
+    return screening, features
 
 
-def _config_with_tables(make_config, screening_rows):
+def _config_with_tables(make_config, screening_rows, feature_rows):
     config_path = make_config(
         sources={},
         outputs={
@@ -61,18 +68,14 @@ def _config_with_tables(make_config, screening_rows):
         },
     )
     config = load_project_config(config_path)
-    features = [
-        {"asset_id": row["asset_id"], "face_count": "1200", "vertex_count": "600"}
-        for row in screening_rows
-    ]
-    write_csv(config.output_path("features"), features, FEATURE_COLUMNS)
+    write_csv(config.output_path("features"), feature_rows, FEATURE_COLUMNS)
     table_path, _ = screening_paths(config)
     write_csv(table_path, screening_rows, SCREEN_COLUMNS)
     return config
 
 
-def test_plan_covers_every_level_both_sources_and_the_decision_rules(make_config) -> None:
-    config = _config_with_tables(make_config, _corpus())
+def test_plan_covers_every_level_and_spreads_over_face_bins(make_config) -> None:
+    config = _config_with_tables(make_config, *_corpus())
 
     sheet, key, report = plan_screening_review(config, per_level=3)
 
@@ -84,8 +87,12 @@ def test_plan_covers_every_level_both_sources_and_the_decision_rules(make_config
     assert labels.count("reject") == 3
 
     assert {row["source_dataset"] for row in key} == {"toys4k", "objaverse"}
-    reasons = {entry["reason"] for entry in report["strata"] if entry["sampled"]}
-    assert {"narrow_faces", "face_count_range", "redundant_vertices"} <= reasons
+    sampled_bins = {
+        entry["face_bin"]
+        for entry in report["strata"]
+        if entry["sampled"] and entry["level"] == "reject"
+    }
+    assert len(sampled_bins) >= 2, "a level must not collapse onto one face-count bin"
 
     key_by_name = {row["anonymous_name"]: row for row in key}
     for row in sheet:
@@ -93,9 +100,33 @@ def test_plan_covers_every_level_both_sources_and_the_decision_rules(make_config
         assert key_by_name[row["anonymous_name"]]["asset_id"] == row["asset_id"]
 
 
+def test_a_small_budget_is_not_eaten_by_the_first_strata(make_config) -> None:
+    """Regression: the first cells alphabetically are all one source.
+
+    A plain round robin hands the entire budget to the first N cells, and cells
+    sort by source name first — so a budget smaller than the number of cells
+    used to sample one source only. The remainder is now drawn in a shuffled
+    order.
+    """
+    screening, features = [], []
+    for position, count in enumerate((100, 400, 700, 1500, 3000, 6000, 9000, 18000)):
+        for source in ("toys4k", "objaverse"):
+            asset_id = f"{source[:2]}{position}"
+            screening.append(_row(asset_id, source, "clean"))
+            features.append(
+                {"asset_id": asset_id, "face_count": str(count), "vertex_count": "600"}
+            )
+    config = _config_with_tables(make_config, screening, features)
+
+    _, key, report = plan_screening_review(config, per_level=4)
+
+    assert {row["source_dataset"] for row in key} == {"toys4k", "objaverse"}
+    assert len([entry for entry in report["strata"] if entry["sampled"]]) == 4
+
+
 def test_the_sheet_is_a_blank_form(make_config) -> None:
     """The machine's label is shown on purpose; the judgement columns are empty."""
-    config = _config_with_tables(make_config, _corpus())
+    config = _config_with_tables(make_config, *_corpus())
 
     sheet, _, _ = plan_screening_review(config, per_level=2)
 
@@ -106,7 +137,7 @@ def test_the_sheet_is_a_blank_form(make_config) -> None:
 
 
 def test_the_sample_is_deterministic_for_a_seed(make_config) -> None:
-    config = _config_with_tables(make_config, _corpus())
+    config = _config_with_tables(make_config, *_corpus())
 
     first_sheet, _, _ = plan_screening_review(config, per_level=3)
     second_sheet, _, _ = plan_screening_review(config, per_level=3)
