@@ -378,12 +378,37 @@ def _qem_redundancy_median(
     return float(np.median(error[in_use] / mean_length[in_use] ** 2))
 
 
-def _redundant_face_share(
+def _weld_vertices(
+    vertices: np.ndarray, faces: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Merge vertices that coincide within a relative epsilon.
+
+    Most of the corpus does not share vertices between faces: the calibration
+    meshes carry up to six copies of every corner (each quad its own island),
+    and the share of meshes with any split is near universal in both sources.
+    The person judging a mesh sees the welded geometry — coincident copies are
+    one point on screen — while a patch walker that follows indices sees
+    islands and concludes nothing can be merged. Welding first makes the
+    measurement see what the eye sees; it is the difference between A0029
+    reading 0.000 and 0.49 in the third calibration round.
+
+    The epsilon is `1e-6` of the bounding-box diagonal, so it holds across the
+    three orders of magnitude of scale in the corpus without ever merging
+    corners an exporter would treat as distinct.
+    """
+    diagonal = float(np.linalg.norm(vertices.max(axis=0) - vertices.min(axis=0)))
+    epsilon = max(diagonal, 1.0e-12) * 1.0e-6
+    keys = np.round(vertices / epsilon).astype(np.int64)
+    _, index, inverse = np.unique(keys, axis=0, return_index=True, return_inverse=True)
+    return vertices[index], inverse[faces]
+
+
+def _patch_minimal_faces(
     vertices: np.ndarray,
     faces: np.ndarray,
-    tolerance_deg: float = FLAT_ANGLE_TOLERANCE_DEG,
-) -> float:
-    """The fraction of faces that could be removed without changing the shape.
+    tolerance_deg: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Per-patch face counts and minimal triangle counts at a merge tolerance.
 
     The recipe is CGAL's planar-patch remeshing (`remesh_planar_patches`):
     group edge-adjacent faces into patches of (nearly) one plane, walk each
@@ -393,17 +418,20 @@ def _redundant_face_share(
     tessellated inside, so everything above that is faces spent on nothing: the
     group's "a rectangle needs two triangles, this one used eight".
 
-    A dense but curved surface scores zero here. No two of its faces are
-    coplanar, so every patch is a single triangle and every patch is already
-    minimal — a sphere's faces are not redundant, however many there are. That
-    is what this column adds to the redundancy proxies: it separates "faces
-    spent where the shape needs them" from "faces spent on flat ground".
+    The input is welded first: patches are a statement about the geometry, and
+    in this corpus adjacency usually lives in coincident coordinates, not in
+    indices (see `_weld_vertices`).
+
+    Returns `(faces_per_patch, minimal_faces)`; the caller aggregates them.
+    The tolerance is the whole difference between "flat ground" and "too many
+    faces for this curve", so it is a parameter, not a constant.
 
     The minimum is exact for simply connected patches; a patch with a hole is
     triangulated in c + 2h - 2 triangles rather than c - 2, so the share is
-    mildly optimistic on such patches. That direction is deliberate: this
-    column only ever argues *for* redundancy.
+    mildly optimistic on such patches. That direction is deliberate: the
+    aggregate share only ever argues *for* redundancy.
     """
+    vertices, faces = _weld_vertices(vertices, faces)
     tolerance_cos = math.cos(math.radians(tolerance_deg))
     triangles = vertices[faces]
     cross = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
@@ -448,13 +476,18 @@ def _redundant_face_share(
 
     _, patch_of_faces = np.unique([find(face) for face in range(len(faces))], return_inverse=True)
     patch_count = int(patch_of_faces.max()) + 1
+    faces_per_patch = np.bincount(patch_of_faces, minlength=patch_count)
 
     # Every border edge contributes its two endpoints as boundary points of the
     # patch(es) it borders; a boundary edge borders one patch, a non-coplanar
     # interior edge borders both of its faces' patches.
     border_edges = np.nonzero((counts == 1) | ((counts == 2) & ~coplanar))[0]
     if not len(border_edges):
-        return 0.0  # a closed surface with one patch cannot exist, but be safe
+        # Every face merged into one closed patch: no border, no corners, so
+        # each patch needs exactly one triangle. Unreachable at the 3° default
+        # (it needs a surface everywhere flatter than the tolerance), but a
+        # sphere read at 30° can get here.
+        return faces_per_patch.astype(np.float64), np.ones(patch_count)
     edge_a = unique_edges[border_edges, 0]
     edge_b = unique_edges[border_edges, 1]
     deltas = vertices[edge_b] - vertices[edge_a]
@@ -509,6 +542,24 @@ def _redundant_face_share(
     group_patches = patch_labels[group_starts]
     corners_per_patch = np.bincount(group_patches[is_corner], minlength=patch_count)
     minimal_faces = np.maximum(corners_per_patch - 2, 1)
+    return faces_per_patch.astype(np.float64), minimal_faces.astype(np.float64)
+
+
+def _redundant_face_share(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    tolerance_deg: float = FLAT_ANGLE_TOLERANCE_DEG,
+) -> float:
+    """The fraction of faces that could be removed without changing the shape.
+
+    A dense but curved surface scores zero here. No two of its faces are
+    coplanar within the tolerance, so every patch is a single triangle and
+    every patch is already minimal — a sphere's faces are not redundant,
+    however many there are. That is what this column adds to the redundancy
+    proxies: it separates "faces spent where the shape needs them" from "faces
+    spent on flat ground".
+    """
+    _, minimal_faces = _patch_minimal_faces(vertices, faces, tolerance_deg)
     share = 1.0 - float(minimal_faces.sum()) / len(faces)
     return float(min(max(share, 0.0), 1.0))
 

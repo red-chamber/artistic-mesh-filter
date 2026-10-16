@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from mesh_filter.config import load_project_config
-from mesh_filter.features.artistic import COLUMNS, compute_artistic_features
+from mesh_filter.features.artistic import COLUMNS, _weld_vertices, compute_artistic_features
 from mesh_filter.features.basic import compute_basic_features
 from mesh_filter.inspection import load_artistic_features
 from mesh_filter.manifest import build_manifest, read_csv
@@ -174,6 +174,43 @@ def test_a_folded_sheet_is_still_wasteful_on_both_slopes() -> None:
     flat = compute_artistic_features(*tent(15, 6, grading=1.0))
 
     assert flat["redundant_face_share"] > 0.9
+
+
+def test_split_faces_are_welded_before_patching() -> None:
+    """Coincident copies of a corner are one corner; the measure must see that.
+
+    Most of the corpus has no shared vertices at all — every face or quad
+    carries its own copies — so an index-following patch walker sees islands
+    and reports nothing mergeable. Welding first is what made the calibration
+    round's "faces that could be merged" family visible (A0029: 0.000 before,
+    0.49 after).
+    """
+    vertices, faces = _grid(size=5)
+    welded = compute_artistic_features(vertices, faces)["redundant_face_share"]
+
+    split_points = vertices[faces].reshape(-1, 3)
+    split_faces = np.arange(len(split_points)).reshape(-1, 3)
+    split = compute_artistic_features(split_points, split_faces)["redundant_face_share"]
+
+    assert split == pytest.approx(welded)
+
+
+def test_weld_vertices_merges_only_near_coincident_points() -> None:
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0e-9, 0.0, 0.0],
+            [0.0, 0.0, 2.0],
+        ]
+    )
+    faces = np.array([[0, 1, 2], [3, 1, 2], [0, 4, 1]], dtype=np.int64)
+
+    welded_vertices, welded_faces = _weld_vertices(vertices, faces)
+
+    assert len(welded_vertices) == 4  # the near-coincident copy of vertex 0 merged
+    assert welded_faces[0].tolist() == welded_faces[1].tolist()
 
 
 def test_degree_statistics_are_concentrated_on_a_grid() -> None:

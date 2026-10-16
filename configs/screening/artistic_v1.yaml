@@ -105,10 +105,11 @@ rules:
     severity: reject
     provenance: >-
       判据二的核心度量：不用改变形状就能删掉的面占比 > 15% 即拒（口径按 CGAL 的
-      remesh_planar_patches，见 docs/RELATED_WORK.md）。两轮边界带复核：0.15 上方
-      16/16 被认可（含 0.155–0.179 的贴边样本）；下方 [0.05,0.15) 的人工判断互相矛盾
-      （0.081 与 0.139 判 reject，0.093 判 flag 合适，0.130 判 accept）——这一带不由
-      占比驱动。阈值维持 0.15，缺口交给结构型冗余度量（见 docs/OPEN_QUESTIONS.md）。
+      remesh_planar_patches，见 docs/RELATED_WORK.md；坐标重合的顶点先焊接——语料里
+      约九成资产是分裂顶点，不焊接则整族漏网，A0029 读 0.000 vs 焊接后 0.49）。三轮
+      138 个人工标签复核：焊接后门槛 0.15 保住全部历史认可样本、新抓 7 个漏放；已知
+      代价：1 个新增 accept 误报（第一轮 A0041，0.167）与 0.15–0.23 的 4 个 flag-ok
+      样本被过判为 reject，下一轮复核。
     conditions:
       - {column: redundant_face_share, op: max, value: 0.15}
 
@@ -117,7 +118,8 @@ rules:
     provenance: >-
       同一度量的可疑带：>5% 就记录。两轮合计 27 次触发、26 次被认可（改判一个在本轮
       reject 档、一个在 accept 档）。它兜住了大部分"存在可以被合并的面"的改判样本，
-      保持记录不拦截。
+      保持记录不拦截。注意焊接修正后此列数值整体上移（校准集里 accept 侧也有 9/47
+      超过 0.05），触发率会明显上升——记录带的阈值下一轮再校准。
     conditions:
       - {column: redundant_face_share, op: max, value: 0.05}
 

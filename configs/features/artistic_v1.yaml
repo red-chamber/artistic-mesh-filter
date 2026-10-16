@@ -30,5 +30,6 @@ features:
   qem_redundancy_median: true           # 高 = 好
   # 冗余的面：不用改变形状就能删掉的面占比（平面 patch 内部多铺的三角形）。
   # 判据二的核心度量——"一个矩形只需要 2 个三角形却用了 8 个"。口径按 CGAL 的
-  # remesh_planar_patches（见 docs/RELATED_WORK.md）；弯曲的密集表面（球体）在此为 0。
+  # remesh_planar_patches（见 docs/RELATED_WORK.md）；坐标重合的顶点先焊接
+  # （语料里约九成资产是分裂顶点，不焊接则整族漏网）；弯曲的密集表面（球体）在此为 0。
   redundant_face_share: true            # 低 = 好
