@@ -61,7 +61,10 @@ rules:
 
   - name: narrow_faces
     severity: reject
-    provenance: "MeshRipple 附录 B.1：最小内角 <5° 的面占比 >20% 即丢弃"
+    provenance: >-
+      MeshRipple 附录 B.1：最小内角 <5° 的面占比 >20% 即丢弃。第三轮出现首个反例：
+      A0026（0.214 刚过线，人判 accept "看起来并非冗余"）。单例不动论文口径，继续观察；
+      若同类反例再出现，考虑降为 flag 或核对 small_angle_ratio 与论文定义的口径差。
     conditions:
       - {column: small_angle_ratio, op: max, value: 0.2}
 
@@ -81,10 +84,10 @@ rules:
   - name: redundant_vertices
     severity: flag
     provenance: >-
-      判据二（冗余面）：顶点塌缩到邻居质心几乎不丢形状（QEM 低）＝ 顶点冗余。这是目前
-      最弱的一条 flag：该列过半为 0、在语料上约六成触发；第二轮 23 次触发 20 次被认可，
-      但作为唯一触发规则时只有 3/6——三个误报都是 <500 面的干净小模型。保留但不再单独
-      解读，下一轮若继续误报就删掉它（判据二已由 redundant_face_share 承担）。
+      判据二（冗余面）：顶点塌缩到邻居质心几乎不丢形状（QEM 低）＝ 顶点冗余。第二轮的
+      观察名单（"下一轮若继续误报就删掉"）到第三轮撤销：21 次触发仅 1 次被改判 accept；
+      作为唯一触发时 12 个样本 11 个被认可，其中 2 个人升级为 reject（"存在可以被合并的
+      面"）——它同时是结构型冗余家族的弱探测器。保留。
     conditions:
       - {column: qem_redundancy_median, op: min, value: 0.001}
 
@@ -102,18 +105,19 @@ rules:
     severity: reject
     provenance: >-
       判据二的核心度量：不用改变形状就能删掉的面占比 > 15% 即拒（口径按 CGAL 的
-      remesh_planar_patches，见 docs/RELATED_WORK.md）。第二轮校准（按面数配平）里
-      触发 11 次全部被认可，含 0.155 / 0.159 / 0.173 / 0.179 这些贴边样本。已知近失：
-      A0036（0.139，人判 reject）——但它与 A0022（0.145，人判 flag 合适）互相矛盾，
-      阈值维持 0.15。
+      remesh_planar_patches，见 docs/RELATED_WORK.md）。两轮边界带复核：0.15 上方
+      16/16 被认可（含 0.155–0.179 的贴边样本）；下方 [0.05,0.15) 的人工判断互相矛盾
+      （0.081 与 0.139 判 reject，0.093 判 flag 合适，0.130 判 accept）——这一带不由
+      占比驱动。阈值维持 0.15，缺口交给结构型冗余度量（见 docs/OPEN_QUESTIONS.md）。
     conditions:
       - {column: redundant_face_share, op: max, value: 0.15}
 
   - name: redundant_faces_elevated
     severity: flag
     provenance: >-
-      同一度量的可疑带：>5% 就记录。第二轮触发 17 次、16 次被认可；唯一的改判是
-      A0036（0.139，人判 reject），已记在上面。
+      同一度量的可疑带：>5% 就记录。两轮合计 27 次触发、26 次被认可（改判一个在本轮
+      reject 档、一个在 accept 档）。它兜住了大部分"存在可以被合并的面"的改判样本，
+      保持记录不拦截。
     conditions:
       - {column: redundant_face_share, op: max, value: 0.05}
 
