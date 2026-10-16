@@ -1,0 +1,123 @@
+version: "screening-v1"
+status: "draft"
+
+# 规则集的依据（2026-10-16 与用户确认的口径）：
+#
+# 一、面数与顶点数（第一条判据）按课题组自己的论文：LATO（ICML 2026，arXiv 2603.06357）与
+#     MeshRipple（CVPR 2026，arXiv 2512.07514）都丢弃面数 >20k 或 <500 的网格；MeshRipple
+#     另有"窄面（最小内角 <5°）占比 >20% 即丢弃"。
+# 二、面的形状（第二条判据）按学长的原意：**不是"等边就一定坏"，而是"不能为了满足形状规则
+#     而增加太多冗余的面"**。因此这里没有任何规则以等边度单独判负；冗余面用三条代理量检测：
+#     面大小同质度（均匀铺面）、顶点冗余度（QEM）、以及"等边 + 冗余"的组合签名。
+# 三、顶点分布（第三条判据）按学长的话：整齐有规律（度数集中）＋ 平坦处稀疏、转折处密集
+#     （曲率-密度相关为正）。
+# 其余按学术界通用做法：退化面、重复面、非流形边的结构有效性检查。
+#
+# severity 的取值：
+#   reject —— 硬门槛，不通过即出局；
+#   flag   —— 只记录、参与排序，不拦截。阈值还没校准，拦截等于把猜测装成筛选器。
+# 阈值初值取自 4567 个资产的分布（见 docs/OPEN_QUESTIONS.md 与 docs/RELATED_WORK.md）；
+# 校准办法：脚本排序后人工盲判两端各 20 个，再回来改这里的数字。
+
+rules:
+  # ---- 结构有效性（学术界通用）----
+  - name: parsed
+    severity: reject
+    provenance: "结构有效性：解析失败（不可读、几何损坏）直接出局"
+    conditions:
+      - {column: parse_status, op: equals, value: "parsed"}
+
+  - name: degenerate_faces
+    severity: reject
+    provenance: "结构有效性：退化面（面积 ≤ 中位面面积×1e-6）占比不得超过 1%"
+    conditions:
+      - {column: zero_area_face_ratio, op: max, value: 0.01}
+
+  - name: duplicate_faces
+    severity: reject
+    provenance: "结构有效性：不允许重复三角面"
+    conditions:
+      - {column: duplicate_face_count, op: max, value: 0}
+
+  - name: nonmanifold_edges
+    severity: reject
+    provenance: "结构有效性：不允许非流形边（这条最严，若校准中发现误杀可改 flag）"
+    conditions:
+      - {column: nonmanifold_edge_count, op: max, value: 0}
+
+  # ---- 第一条判据：面数与顶点数（课题组论文）----
+  - name: face_count_range
+    severity: reject
+    provenance: "第一条判据：LATO 与 MeshRipple 都丢弃面数 >20k 或 <500 的网格"
+    conditions:
+      - {column: face_count, op: min, value: 500}
+      - {column: face_count, op: max, value: 20000}
+
+  - name: narrow_faces
+    severity: reject
+    provenance: "MeshRipple 附录 B.1：最小内角 <5° 的面占比 >20% 即丢弃"
+    conditions:
+      - {column: small_angle_ratio, op: max, value: 0.2}
+
+  # ---- 第二条判据：为规则形状堆的冗余面（按学长原意）----
+  - name: homogeneous_faces
+    severity: flag
+    provenance: >-
+      判据二（冗余面）：面大小同质（面积变异系数低）＝ 平均地铺面，而不是把面花在需要的地方。
+      阈值 0.5 待校准（实测 p10≈0.73，即只对最同质的一小部分报警）。
+    conditions:
+      - {column: area_coefficient_of_variation, op: min, value: 0.5}
+
+  - name: redundant_vertices
+    severity: flag
+    provenance: >-
+      判据二（冗余面）：顶点塌缩到邻居质心几乎不丢形状（QEM 低）＝ 顶点冗余。
+      该列过半为 0，阈值 0.001 待校准。
+    conditions:
+      - {column: qem_redundancy_median, op: min, value: 0.001}
+
+  - name: uniform_remesh_signature
+    severity: flag
+    match: any
+    provenance: >-
+      判据二的组合签名：等边度高 **且** 顶点冗余——"为了形状规则而堆面"的典型。
+      用 any 语义表达"不同时满足两项才算通过"；等边度本身不是拒绝理由。
+    conditions:
+      - {column: equilateral_median, op: max, value: 0.9}
+      - {column: qem_redundancy_median, op: min, value: 0.001}
+
+  # ---- 第三条判据：顶点分布整齐有规律（按学长的话）----
+  - name: degree_concentration
+    severity: flag
+    provenance: >-
+      判据三：顶点度数集中（众数占比）。阈值 0.35 待校准——合成对照显示均匀细分球的度数
+      同样高度集中（tests/test_feature_contrast.py），不能单独当"手工程度"用。
+    conditions:
+      - {column: vertex_degree_mode_share, op: min, value: 0.35}
+
+  - name: density_follows_curvature
+    severity: flag
+    provenance: >-
+      判据三：平坦处稀疏、转折处密集（曲率-密度相关为正）。测不出来（空值）记 unknown，
+      不算失败；该列的两条边界见 docs/FEATURE_DEFINITIONS.md。
+    conditions:
+      - {column: curvature_density_correlation, op: min, value: 0.2}
+
+# 已知但暂不应用的规则：口径未对齐或尚未实现，报告里会原样列出，提醒它们仍是空缺。
+unapplied:
+  - name: vertex_face_ratio
+    source: "MeshRipple 附录 B.1：顶点面数比 > 0.8 丢弃"
+    reason: >-
+      口径未定：合并重合顶点后 0.51–0.52（几乎全过），不合并 0.87–1.13（过半不过），
+      见 docs/RELATED_WORK.md。确定合并约定之前套用会误杀。
+  - name: connected_components
+    source: "LATO 与 MeshRipple：连通分量 > 20 丢弃"
+    reason: >-
+      MeshRipple 明说先剪掉 <10 面的小簇再数；本项目的 component_count 未剪枝
+      （中位数 78–172），直接套会误杀绝大多数资产。
+  - name: boundary_length
+    source: "MeshRipple：边界长度 > 500 丢弃"
+    reason: "论文里的长度单位（归一化空间）与本项目的 boundary_edge_count（边数）不可直接换算。"
+  - name: self_intersection
+    source: "MeshRipple：自交/重叠面 > 10% 丢弃"
+    reason: "需要分离轴定理或等价检测，尚未实现。"

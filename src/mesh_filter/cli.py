@@ -13,6 +13,7 @@ from mesh_filter.evaluation.review_kit import prepare_review
 from mesh_filter.manifest import build_manifest
 from mesh_filter.models.count_baseline import train_count_baseline
 from mesh_filter.probe import probe_sources
+from mesh_filter.screening import run_screening
 from mesh_filter.smoke import run_smoke_test
 from mesh_filter.split import create_splits
 from mesh_filter.validate import validate_manifest
@@ -87,6 +88,13 @@ def _parser() -> argparse.ArgumentParser:
         "Write anonymised meshes so the audit can be judged in a 3D viewer",
     )
     review.add_argument("--limit", type=int, default=None, help="Only the first N rows")
+
+    screen = add_config("screen", "Apply the screening rules and rank the corpus")
+    screen.add_argument(
+        "--rules",
+        type=Path,
+        default=Path("configs/screening/artistic_v1.yaml"),
+    )
     return parser
 
 
@@ -208,6 +216,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.command == "prepare-review":
         output, report = prepare_review(config, args.limit)
         print(json.dumps(report, ensure_ascii=False))
+    elif args.command == "screen":
+        output, report = run_screening(config, config.resolve(args.rules))
+        print(
+            json.dumps(
+                {
+                    "output": str(output),
+                    "report": report["report"],
+                    "assets": report["assets"],
+                    "verdicts": report["verdicts"],
+                    "rule_failures": {
+                        rule["name"]: {
+                            source: counts["fail"]
+                            for source, counts in rule["counts"].items()
+                        }
+                        for rule in report["rules"]
+                    },
+                    "flag_score": report["flag_score"],
+                },
+                ensure_ascii=False,
+            )
+        )
     elif args.command == "train-count-baseline":
         output, metrics = train_count_baseline(config, config.resolve(args.experiment))
         print(json.dumps({"output": str(output), "metrics": metrics}, ensure_ascii=False))
